@@ -44,6 +44,9 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+// ✅ Fix: Trust proxy for Render or reverse proxies
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
     contentSecurityPolicy: {
@@ -61,14 +64,12 @@ app.use(helmet({
 // CORS configuration
 const corsOptions = {
     origin: function (origin, callback) {
-        const allowedOrigins = process.env.CORS_ORIGIN ? 
-            process.env.CORS_ORIGIN.split(',') : 
+        const allowedOrigins = process.env.CORS_ORIGIN ?
+            process.env.CORS_ORIGIN.split(',') :
             ['http://localhost:3000', 'http://localhost:5000'];
-        
-        // Allow requests with no origin (mobile apps, etc.)
-        if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) !== -1) {
+
+        if (!origin) return callback(null, true); // mobile apps, curl, etc.
+        if (allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
@@ -77,13 +78,12 @@ const corsOptions = {
     credentials: true,
     optionsSuccessStatus: 200
 };
-
 app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
     message: {
         success: false,
         message: 'Too many requests from this IP, please try again later.'
@@ -91,17 +91,16 @@ const limiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 });
-
 app.use('/api/', limiter);
 
-// Body parsing middleware
+// Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Compression middleware
+// Compression
 app.use(compression());
 
-// Request logging middleware (development only)
+// Request logger (dev only)
 if (NODE_ENV === 'development') {
     app.use((req, res, next) => {
         console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -109,7 +108,7 @@ if (NODE_ENV === 'development') {
     });
 }
 
-// Health check endpoint
+// Health check
 app.get('/health', (req, res) => {
     res.json({
         success: true,
@@ -120,7 +119,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// API status endpoint
+// API status
 app.get('/api/status', (req, res) => {
     res.json({
         success: true,
@@ -134,9 +133,10 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// API Routes
+// API prefix
 const apiPrefix = process.env.API_PREFIX || '/api/v1';
 
+// Routes
 app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/wallet`, walletRoutes);
 app.use(`${apiPrefix}/vtu`, vtuRoutes);
@@ -148,7 +148,7 @@ app.use(`${apiPrefix}/settings`, settingsRoutes);
 app.use(`${apiPrefix}/subdomain`, subdomainRoutes);
 app.use(`${apiPrefix}/status`, statusRoutes);
 
-// API documentation route
+// API docs
 app.get(`${apiPrefix}/docs`, (req, res) => {
     res.json({
         success: true,
@@ -169,11 +169,10 @@ app.get(`${apiPrefix}/docs`, (req, res) => {
     });
 });
 
-// Real-time updates endpoint (polling fallback)
+// Real-time polling fallback
 app.get(`${apiPrefix}/realtime/updates`, async (req, res) => {
     try {
         const userId = req.query.user_id;
-        
         if (!userId) {
             return res.status(400).json({
                 success: false,
@@ -182,7 +181,7 @@ app.get(`${apiPrefix}/realtime/updates`, async (req, res) => {
         }
 
         const updates = await realtimeHandler.getPendingUpdates(userId);
-        
+
         res.json({
             success: true,
             data: updates,
@@ -198,7 +197,7 @@ app.get(`${apiPrefix}/realtime/updates`, async (req, res) => {
     }
 });
 
-// Catch-all route for undefined endpoints
+// Catch-all
 app.all('*', (req, res) => {
     res.status(404).json({
         success: false,
@@ -207,29 +206,23 @@ app.all('*', (req, res) => {
     });
 });
 
-// Error handling middleware (must be last)
+// Error handler
 app.use(errorHandler);
 
 // Initialize real-time handler
 realtimeHandler.init();
 realtimeHandler.startCleanupInterval();
 
-// Graceful shutdown handler
+// Graceful shutdown
 const gracefulShutdown = (signal) => {
     console.log(`\n🔄 Received ${signal}. Starting graceful shutdown...`);
-    
-    // Stop accepting new connections
+
     server.close(() => {
         console.log('✅ HTTP server closed');
-        
-        // Shutdown real-time handler
         realtimeHandler.shutdown();
-        
-        // Exit process
         process.exit(0);
     });
 
-    // Force close after 30 seconds
     setTimeout(() => {
         console.error('❌ Could not close connections in time, forcefully shutting down');
         process.exit(1);
@@ -246,14 +239,14 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`💊 Health Check: http://0.0.0.0:${PORT}/health`);
     console.log(`📚 API Docs: http://0.0.0.0:${PORT}${apiPrefix}/docs`);
     console.log('==========================================');
-    
+
     if (NODE_ENV === 'development') {
         console.log('🔧 Development mode features:');
         console.log('   - Request logging enabled');
         console.log('   - Detailed error messages');
         console.log('   - CORS origins:', process.env.CORS_ORIGIN || 'localhost:3000,localhost:5000');
     }
-    
+
     console.log('\n🎯 Available Services:');
     console.log('   - Authentication & User Management');
     console.log('   - Wallet & Balance Management');
@@ -272,13 +265,13 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Handle uncaught exceptions
+// Uncaught exception
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
     process.exit(1);
 });
 
-// Handle unhandled promise rejections
+// Unhandled rejection
 process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
     process.exit(1);
