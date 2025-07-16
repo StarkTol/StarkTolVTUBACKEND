@@ -51,7 +51,7 @@ class AuthController {
                     .select('id')
                     .eq('referral_code', referral_code)
                     .single();
-                
+
                 if (referrer) {
                     referrer_id = referrer.id;
                 }
@@ -78,12 +78,18 @@ class AuthController {
                 .single();
 
             if (userError) {
-                // Cleanup auth user if profile creation fails
+                console.error("❌ Failed to insert user profile:");
+                console.error("Message:", userError.message);
+                console.error("Details:", userError.details);
+                console.error("Hint:", userError.hint);
+                console.error("Code:", userError.code);
+
+                // Cleanup auth user
                 await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
                 return res.status(500).json(generateResponse(false, 'Failed to create user profile'));
             }
 
-            // Create wallet entry
+            // Create wallet
             await supabase
                 .from('wallets')
                 .insert({
@@ -93,7 +99,7 @@ class AuthController {
                     total_withdrawals: 0.00
                 });
 
-            // Process referral bonus if applicable
+            // Handle referral bonus
             if (referrer_id) {
                 const referralBonus = parseFloat(process.env.REFERRAL_BONUS || '100');
                 await supabase
@@ -107,11 +113,11 @@ class AuthController {
             }
 
             const { password: _, ...userResponse } = userData;
-            res.status(201).json(generateResponse(true, 'User registered successfully', userResponse));
+            return res.status(201).json(generateResponse(true, 'User registered successfully', userResponse));
 
         } catch (error) {
-            console.error('Registration error:', error);
-            res.status(500).json(generateResponse(false, 'Internal server error'));
+            console.error("🔥 Registration error (outer catch):", error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
 
@@ -124,7 +130,6 @@ class AuthController {
                 return res.status(400).json(generateResponse(false, 'Email and password are required'));
             }
 
-            // Authenticate with Supabase
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email,
                 password
@@ -134,7 +139,6 @@ class AuthController {
                 return res.status(401).json(generateResponse(false, 'Invalid credentials'));
             }
 
-            // Get user profile
             const { data: userData, error: userError } = await supabase
                 .from('users')
                 .select('*')
@@ -145,28 +149,26 @@ class AuthController {
                 return res.status(404).json(generateResponse(false, 'User profile not found'));
             }
 
-            // Check if user is active
             if (userData.status !== 'active') {
                 return res.status(403).json(generateResponse(false, 'Account is suspended'));
             }
 
-            // Update last login
             await supabase
                 .from('users')
                 .update({ last_login: new Date().toISOString() })
                 .eq('id', userData.id);
 
             const { password: _, ...userResponse } = userData;
-            
-            res.json(generateResponse(true, 'Login successful', {
+
+            return res.json(generateResponse(true, 'Login successful', {
                 user: userResponse,
                 access_token: authData.session.access_token,
                 refresh_token: authData.session.refresh_token
             }));
 
         } catch (error) {
-            console.error('Login error:', error);
-            res.status(500).json(generateResponse(false, 'Internal server error'));
+            console.error("🔥 Login error:", error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
 
@@ -174,16 +176,16 @@ class AuthController {
     async logout(req, res) {
         try {
             const { error } = await supabase.auth.signOut();
-            
+
             if (error) {
                 return res.status(400).json(generateResponse(false, error.message));
             }
 
-            res.json(generateResponse(true, 'Logged out successfully'));
+            return res.json(generateResponse(true, 'Logged out successfully'));
 
         } catch (error) {
-            console.error('Logout error:', error);
-            res.status(500).json(generateResponse(false, 'Internal server error'));
+            console.error("🔥 Logout error:", error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
 
@@ -206,15 +208,15 @@ class AuthController {
             }
 
             const { password: _, ...userResponse } = userData;
-            res.json(generateResponse(true, 'Profile retrieved successfully', userResponse));
+            return res.json(generateResponse(true, 'Profile retrieved successfully', userResponse));
 
         } catch (error) {
-            console.error('Get profile error:', error);
-            res.status(500).json(generateResponse(false, 'Internal server error'));
+            console.error("🔥 Get profile error:", error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
 
-    // Update user profile
+    // Update profile
     async updateProfile(req, res) {
         try {
             const userId = req.user.id;
@@ -240,11 +242,11 @@ class AuthController {
             }
 
             const { password: _, ...userResponse } = userData;
-            res.json(generateResponse(true, 'Profile updated successfully', userResponse));
+            return res.json(generateResponse(true, 'Profile updated successfully', userResponse));
 
         } catch (error) {
-            console.error('Update profile error:', error);
-            res.status(500).json(generateResponse(false, 'Internal server error'));
+            console.error("🔥 Update profile error:", error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
 
@@ -261,7 +263,6 @@ class AuthController {
                 return res.status(400).json(generateResponse(false, 'New password must be at least 8 characters long'));
             }
 
-            // Verify current password by attempting login
             const { error: verifyError } = await supabase.auth.signInWithPassword({
                 email: req.user.email,
                 password: current_password
@@ -271,7 +272,6 @@ class AuthController {
                 return res.status(400).json(generateResponse(false, 'Current password is incorrect'));
             }
 
-            // Update password
             const { error: updateError } = await supabase.auth.updateUser({
                 password: new_password
             });
@@ -280,11 +280,11 @@ class AuthController {
                 return res.status(400).json(generateResponse(false, updateError.message));
             }
 
-            res.json(generateResponse(true, 'Password changed successfully'));
+            return res.json(generateResponse(true, 'Password changed successfully'));
 
         } catch (error) {
-            console.error('Change password error:', error);
-            res.status(500).json(generateResponse(false, 'Internal server error'));
+            console.error("🔥 Change password error:", error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
 }
