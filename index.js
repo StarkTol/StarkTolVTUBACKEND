@@ -11,6 +11,7 @@ const { validateEnvVars } = require('./utils/helpers');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/user'); // ✅ NEW
 const walletRoutes = require('./routes/wallet');
 const vtuRoutes = require('./routes/vtu');
 const transactionRoutes = require('./routes/transactions');
@@ -24,7 +25,7 @@ const statusRoutes = require('./routes/status');
 // Import real-time handler
 const { realtimeHandler } = require('./utils/realtimeHandler');
 
-// Validate required environment variables
+// Validate environment variables
 const requiredEnvVars = [
     'SUPABASE_URL',
     'SUPABASE_ANON_KEY',
@@ -39,15 +40,14 @@ try {
     process.exit(1);
 }
 
-// Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 8000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// ✅ Fix: Trust proxy for Render or reverse proxies
+// Trust proxy (Render/reverse proxy support)
 app.set('trust proxy', 1);
 
-// Security middleware
+// Helmet security
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -61,15 +61,13 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration
+// CORS
 const corsOptions = {
     origin: function (origin, callback) {
         const allowedOrigins = process.env.CORS_ORIGIN ?
             process.env.CORS_ORIGIN.split(',') :
             ['http://localhost:3000', 'http://localhost:5000'];
-
-        if (!origin) return callback(null, true); // mobile apps, curl, etc.
-        if (allowedOrigins.includes(origin)) {
+        if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
@@ -80,7 +78,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Rate limiting
+// Rate Limiting
 const limiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
@@ -93,14 +91,14 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Body parsing
+// Body Parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Compression
 app.use(compression());
 
-// Request logger (dev only)
+// Logging in development
 if (NODE_ENV === 'development') {
     app.use((req, res, next) => {
         console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -108,7 +106,7 @@ if (NODE_ENV === 'development') {
     });
 }
 
-// Health check
+// Health Check
 app.get('/health', (req, res) => {
     res.json({
         success: true,
@@ -119,7 +117,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// API status
+// API Status
 app.get('/api/status', (req, res) => {
     res.json({
         success: true,
@@ -133,11 +131,12 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// API prefix
+// API Prefix
 const apiPrefix = process.env.API_PREFIX || '/api/v1';
 
-// Routes
+// Register Routes
 app.use(`${apiPrefix}/auth`, authRoutes);
+app.use(`${apiPrefix}/user`, userRoutes); // ✅ NEW
 app.use(`${apiPrefix}/wallet`, walletRoutes);
 app.use(`${apiPrefix}/vtu`, vtuRoutes);
 app.use(`${apiPrefix}/transactions`, transactionRoutes);
@@ -148,7 +147,7 @@ app.use(`${apiPrefix}/settings`, settingsRoutes);
 app.use(`${apiPrefix}/subdomain`, subdomainRoutes);
 app.use(`${apiPrefix}/status`, statusRoutes);
 
-// API docs
+// API Docs
 app.get(`${apiPrefix}/docs`, (req, res) => {
     res.json({
         success: true,
@@ -156,6 +155,7 @@ app.get(`${apiPrefix}/docs`, (req, res) => {
         version: process.env.API_VERSION || 'v1',
         endpoints: {
             auth: `${apiPrefix}/auth`,
+            user: `${apiPrefix}/user`, // ✅ NEW
             wallet: `${apiPrefix}/wallet`,
             vtu: `${apiPrefix}/vtu`,
             transactions: `${apiPrefix}/transactions`,
@@ -169,35 +169,23 @@ app.get(`${apiPrefix}/docs`, (req, res) => {
     });
 });
 
-// Real-time polling fallback
+// Realtime Polling Fallback
 app.get(`${apiPrefix}/realtime/updates`, async (req, res) => {
     try {
         const userId = req.query.user_id;
         if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required'
-            });
+            return res.status(400).json({ success: false, message: 'User ID is required' });
         }
 
         const updates = await realtimeHandler.getPendingUpdates(userId);
-
-        res.json({
-            success: true,
-            data: updates,
-            count: updates.length
-        });
-
+        res.json({ success: true, data: updates, count: updates.length });
     } catch (error) {
-        console.error('Get realtime updates error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to retrieve updates'
-        });
+        console.error('Realtime updates error:', error);
+        res.status(500).json({ success: false, message: 'Failed to retrieve updates' });
     }
 });
 
-// Catch-all
+// 404 Catch-all
 app.all('*', (req, res) => {
     res.status(404).json({
         success: false,
@@ -206,17 +194,16 @@ app.all('*', (req, res) => {
     });
 });
 
-// Error handler
+// Global Error Handler
 app.use(errorHandler);
 
-// Initialize real-time handler
+// Init Realtime
 realtimeHandler.init();
 realtimeHandler.startCleanupInterval();
 
-// Graceful shutdown
+// Graceful Shutdown
 const gracefulShutdown = (signal) => {
     console.log(`\n🔄 Received ${signal}. Starting graceful shutdown...`);
-
     server.close(() => {
         console.log('✅ HTTP server closed');
         realtimeHandler.shutdown();
@@ -224,12 +211,12 @@ const gracefulShutdown = (signal) => {
     });
 
     setTimeout(() => {
-        console.error('❌ Could not close connections in time, forcefully shutting down');
+        console.error('❌ Could not close in time. Forcing shutdown.');
         process.exit(1);
     }, 30000);
 };
 
-// Start server
+// Start Server
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('\n🚀 StarkTol VTU Backend Server Started!');
     console.log('==========================================');
@@ -239,41 +226,31 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`💊 Health Check: http://0.0.0.0:${PORT}/health`);
     console.log(`📚 API Docs: http://0.0.0.0:${PORT}${apiPrefix}/docs`);
     console.log('==========================================');
-
-    if (NODE_ENV === 'development') {
-        console.log('🔧 Development mode features:');
-        console.log('   - Request logging enabled');
-        console.log('   - Detailed error messages');
-        console.log('   - CORS origins:', process.env.CORS_ORIGIN || 'localhost:3000,localhost:5000');
-    }
-
-    console.log('\n🎯 Available Services:');
+    console.log('🎯 Services Available:');
     console.log('   - Authentication & User Management');
-    console.log('   - Wallet & Balance Management');
-    console.log('   - VTU Services (Airtime, Data, Cable, Electricity)');
-    console.log('   - Transaction Management');
-    console.log('   - Reseller & Sub-reseller System');
-    console.log('   - Referral Management');
-    console.log('   - Support Ticket System');
-    console.log('   - Settings & Configuration');
+    console.log('   - Wallet & Balance');
+    console.log('   - VTU Services');
+    console.log('   - Transactions');
+    console.log('   - Reseller System');
+    console.log('   - Referral Program');
+    console.log('   - Support Tickets');
+    console.log('   - Settings');
     console.log('   - Subdomain Management');
-    console.log('   - Real-time Updates');
+    console.log('   - Realtime Updates');
     console.log('\n✨ Ready to serve requests!\n');
 });
 
-// Handle process signals
+// Handle Signals
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Uncaught exception
-process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
+// Handle unexpected exceptions
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
     process.exit(1);
 });
-
-// Unhandled rejection
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('❌ Unhandled Rejection:', reason);
     process.exit(1);
 });
 
