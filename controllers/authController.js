@@ -60,8 +60,8 @@ class AuthController {
             // Generate unique referral code
             const userReferralCode = `STK${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
-            // Create user profile
-            const { data: userData, error: userError } = await supabase
+            // ✅ Use supabaseAdmin to bypass RLS when inserting user profile
+            const { data: userData, error: userError } = await supabaseAdmin
                 .from('users')
                 .insert({
                     id: authData.user.id,
@@ -90,7 +90,7 @@ class AuthController {
             }
 
             // Create wallet
-            await supabase
+            await supabaseAdmin
                 .from('wallets')
                 .insert({
                     user_id: userData.id,
@@ -102,7 +102,7 @@ class AuthController {
             // Handle referral bonus
             if (referrer_id) {
                 const referralBonus = parseFloat(process.env.REFERRAL_BONUS || '100');
-                await supabase
+                await supabaseAdmin
                     .from('referrals')
                     .insert({
                         referrer_id,
