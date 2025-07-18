@@ -7,6 +7,8 @@ class AuthController {
     try {
       const { email, password, full_name, phone, referral_code } = req.body;
 
+      console.log("📩 Registration attempt:", email);
+
       if (!validateEmail(email)) {
         return res.status(400).json(generateResponse(false, 'Invalid email format'));
       }
@@ -26,6 +28,7 @@ class AuthController {
         .single();
 
       if (existingUser) {
+        console.warn("⚠️ User already exists:", email);
         return res.status(400).json(generateResponse(false, 'User already exists'));
       }
 
@@ -36,6 +39,7 @@ class AuthController {
       });
 
       if (authError) {
+        console.error("❌ Supabase Auth error:", authError);
         return res.status(400).json(generateResponse(false, authError.message));
       }
 
@@ -94,6 +98,7 @@ class AuthController {
       }
 
       const { password: _, ...userResponse } = userData;
+      console.log("✅ Registration successful:", userResponse.email);
       return res.status(201).json(generateResponse(true, 'User registered successfully', userResponse));
 
     } catch (error) {
@@ -105,6 +110,8 @@ class AuthController {
   async login(req, res) {
     try {
       const { email, password } = req.body;
+
+      console.log("🔐 Login attempt:", email);
 
       if (!email || !password) {
         return res.status(400).json(generateResponse(false, 'Email and password are required'));
@@ -137,7 +144,14 @@ class AuthController {
 
       const { password: _, ...userResponse } = userData;
 
-      // ✅ Return structure expected by frontend
+      // ✅ Set accessToken as httpOnly secure cookie
+      res.cookie("accessToken", authData.session.access_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: "Lax",
+        maxAge: 60 * 60 * 1000, // 1 hour
+      });
+
       return res.json(generateResponse(true, 'Login successful', {
         user: userResponse,
         accessToken: authData.session.access_token,
@@ -158,6 +172,9 @@ class AuthController {
         return res.status(400).json(generateResponse(false, error.message));
       }
 
+      // ✅ Clear cookie
+      res.clearCookie('accessToken');
+
       return res.json(generateResponse(true, 'Logged out successfully'));
 
     } catch (error) {
@@ -172,7 +189,7 @@ class AuthController {
 
       const { data: userData, error } = await supabase
         .from('users')
-        .select(`*, wallets!inner(balance, total_deposits, total_withdrawals)`)
+        .select('*, wallets!inner(balance, total_deposits, total_withdrawals)')
         .eq('id', userId)
         .single();
 
