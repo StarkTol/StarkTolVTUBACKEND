@@ -11,7 +11,7 @@ console.log('============================================');
 // Environment check
 console.log(`📍 Node.js Version: ${process.version}`);
 console.log(`📍 NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
-console.log(`📍 PORT: ${process.env.PORT || 'not set (will use 8000)'}`);
+console.log(`📍 PORT: ${process.env.PORT || 'not set (will use 3000)'}`);
 
 // Load dotenv if available
 try {
@@ -51,7 +51,7 @@ const express = require('express');
 console.log('✅ Express loaded');
 
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 3000;
 
 // Basic middleware
 app.use(express.json());
@@ -65,6 +65,11 @@ app.get('/health', (req, res) => {
         environment: process.env.NODE_ENV || 'development',
         port: PORT
     });
+});
+
+// Render health check endpoint (fast response)
+app.get('/healthz', (req, res) => {
+    res.status(200).json({ status: 'ok' });
 });
 
 // API status endpoint
@@ -118,6 +123,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('================================');
     console.log(`🌐 Server URL: http://0.0.0.0:${PORT}`);
     console.log(`💊 Health Check: http://0.0.0.0:${PORT}/health`);
+    console.log(`🔍 Render Health: http://0.0.0.0:${PORT}/healthz`);
     console.log(`📊 Status Check: http://0.0.0.0:${PORT}/api/status`);
     console.log('================================');
     console.log('🎉 Ready to receive requests!');

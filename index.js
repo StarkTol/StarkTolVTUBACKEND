@@ -13,7 +13,7 @@ const rateLimit = require('express-rate-limit');
 
 console.log('🚀 Starting StarkTol VTU Backend...');
 console.log(`📍 Node Environment: ${process.env.NODE_ENV || 'development'}`);
-console.log(`🌐 Port: ${process.env.PORT || 8000}`);
+console.log(`🌐 Port: ${process.env.PORT || 3000}`);
 
 // Load configuration service with error handling
 let config;
@@ -53,7 +53,7 @@ console.log('✅ Configuration loaded and validated successfully');
 config.logConfigSummary();
 
 const app = express();
-const { PORT } = config.server;
+const { port } = config.server;
 const NODE_ENV = config.env;
 
 // Trust proxy (Render/reverse proxy support)
@@ -125,6 +125,11 @@ app.get('/health', (req, res) => {
         environment: NODE_ENV,
         version: config.server.apiVersion
     });
+});
+
+// Render health check endpoint (fast response)
+app.get('/healthz', (req, res) => {
+    res.status(200).json({ status: 'ok' });
 });
 
 // API Status
@@ -232,14 +237,15 @@ const gracefulShutdown = (signal) => {
 };
 
 // Start Server
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
     console.log('\n🚀 StarkTol VTU Backend Server Started!');
     console.log('==========================================');
     console.log(`📍 Environment: ${NODE_ENV}`);
-    console.log(`🌐 Server running on: http://0.0.0.0:${PORT}`);
-    console.log(`📡 API Base URL: http://0.0.0.0:${PORT}${apiPrefix}`);
-    console.log(`💊 Health Check: http://0.0.0.0:${PORT}/health`);
-    console.log(`📚 API Docs: http://0.0.0.0:${PORT}${apiPrefix}/docs`);
+    console.log(`🌐 Server running on: http://0.0.0.0:${port}`);
+    console.log(`📡 API Base URL: http://0.0.0.0:${port}${apiPrefix}`);
+    console.log(`💊 Health Check: http://0.0.0.0:${port}/health`);
+    console.log(`🔍 Render Health: http://0.0.0.0:${port}/healthz`);
+    console.log(`📚 API Docs: http://0.0.0.0:${port}${apiPrefix}/docs`);
     console.log('==========================================');
     console.log('🎯 Services Available:');
     console.log('   - Authentication & User Management');
