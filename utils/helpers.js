@@ -306,6 +306,24 @@ const isValidJSON = (str) => {
 };
 
 module.exports = {
+    // Log a transaction (for webhook or manual credit)
+    logTransaction: async function({ userId, amount, type, method, reference, status, meta }) {
+        try {
+            const { supabase } = require('../config/supabase');
+            await supabase.from('transactions').insert({
+                user_id: userId,
+                amount: parseFloat(amount),
+                type,
+                method,
+                status,
+                payment_reference: reference,
+                metadata: meta || {},
+                created_at: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('logTransaction error:', error);
+        }
+    },
     generateResponse,
     generateRandomString,
     generateHash,

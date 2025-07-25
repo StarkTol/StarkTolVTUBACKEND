@@ -1,8 +1,153 @@
+const { flutterwaveService } = require('../services/flutterwaveService');
+const { walletService } = require('../services/walletService');
 const { supabase } = require('../config/supabase');
 const { generateResponse } = require('../utils/helpers');
 const { realtimeHandler } = require('../utils/realtimeHandler');
 
 class WalletController {
+
+    // Fund wallet with various payment methods including Flutterwave
+    async fundWallet(req, res) {
+        try {
+            const userId = req.user.id;
+            const { amount, method, metadata } = req.body;
+
+            if (!amount || amount <= 0) {
+                return res.status(400).json(generateResponse(false, 'Invalid funding amount'));
+            }
+
+            if (amount < 100) {
+                return res.status(400).json(generateResponse(false, 'Minimum funding amount is ₦100'));
+            }
+
+            if (!method) {
+                return res.status(400).json(generateResponse(false, 'Payment method is required'));
+            }
+
+            // Check if wallet exists, create if not
+            let wallet;
+            try {
+                wallet = await walletService.getWallet(userId);
+            } catch (error) {
+                // Create wallet if it doesn't exist
+                wallet = await walletService.createWallet(userId);
+            }
+
+            // Handle Flutterwave payment initiation (new approach)
+            if (method === 'flutterwave') {
+                // Get user details for payment
+                const { data: user, error: userError } = await supabase
+                    .from('users')
+                    .select('email, full_name, phone')
+                    .eq('id', userId)
+                    .single();
+
+                if (userError || !user) {
+                    return res.status(404).json(generateResponse(false, 'User details not found'));
+                }
+
+                // Create payment link using Flutterwave service
+                const paymentResult = await flutterwaveService.createPaymentLink({
+                    amount: amount,
+                    userId: userId,
+                    userEmail: user.email,
+                    userName: user.full_name || 'Customer',
+                    userPhone: user.phone,
+                    description: `Wallet funding - ₦${amount}`,
+                    redirectUrl: metadata?.redirectUrl
+                });
+
+                if (!paymentResult.success) {
+                    return res.status(500).json(generateResponse(false, 'Failed to create payment link'));
+                }
+
+                // Log payment initiation
+                const { data: paymentLog, error: logError } = await supabase
+                    .from('payment_logs')
+                    .insert({
+                        user_id: userId,
+                        tx_ref: paymentResult.txRef,
+                        amount: parseFloat(amount),
+                        status: 'initiated',
+                        payment_data: {
+                            payment_link: paymentResult.paymentLink,
+                            flw_data: paymentResult.data
+                        },
+                        created_at: new Date().toISOString()
+                    })
+                    .select()
+                    .single();
+
+                if (logError) {
+                    console.error('Payment log error:', logError);
+                }
+
+                return res.json(generateResponse(true, 'Payment link created successfully', {
+                    paymentLink: paymentResult.paymentLink,
+                    txRef: paymentResult.txRef,
+                    amount: amount,
+                    method: 'flutterwave'
+                }));
+            }
+
+            // Handle Flutterwave verification (legacy method for backward compatibility)
+            if (method === 'flutterwave_verify') {
+                if (!metadata || !metadata.transactionId || !metadata.txRef) {
+                    return res.status(400).json(generateResponse(false, 'Flutterwave transaction details are required'));
+                }
+
+                // Check if transaction was already processed
+                const alreadyProcessed = await walletService.isTransactionProcessed(metadata.txRef);
+                if (alreadyProcessed) {
+                    return res.status(400).json(generateResponse(false, 'Transaction already processed'));
+                }
+
+                // Verify transaction with Flutterwave
+                const verification = await flutterwaveService.verifyTransactionById(metadata.transactionId);
+                
+                if (verification.status !== 'success' || !verification.data || verification.data.status !== 'successful') {
+                    return res.status(400).json(generateResponse(false, verification.message || 'Payment verification failed'));
+                }
+
+                // Verify amount matches
+                if (parseFloat(verification.data.amount) !== parseFloat(amount)) {
+                    return res.status(400).json(generateResponse(false, 'Amount mismatch'));
+                }
+
+                // Verify transaction reference matches
+                if (verification.data.tx_ref !== metadata.txRef) {
+                    return res.status(400).json(generateResponse(false, 'Transaction reference mismatch'));
+                }
+
+                // Credit wallet
+                const creditResult = await walletService.creditWallet(
+                    userId, 
+                    amount, 
+                    'Wallet funding via Flutterwave', 
+                    metadata.txRef
+                );
+
+                // Send real-time update
+                if (typeof realtimeHandler !== 'undefined' && realtimeHandler.sendBalanceUpdate) {
+                    realtimeHandler.sendBalanceUpdate(userId, creditResult.new_balance);
+                }
+
+                return res.json(generateResponse(true, 'Wallet funded successfully', {
+                    transactionId: verification.data.id,
+                    reference: metadata.txRef,
+                    status: 'success',
+                    new_balance: creditResult.new_balance
+                }));
+            }
+
+            // Handle other payment methods (card, bank_transfer, etc.)
+            return res.status(400).json(generateResponse(false, 'Unsupported payment method'));
+
+        } catch (error) {
+            console.error('Fund wallet error:', error);
+            return res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
     // Get wallet balance and details
     async getWallet(req, res) {
         try {

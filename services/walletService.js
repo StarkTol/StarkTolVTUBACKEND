@@ -2,6 +2,23 @@ const { supabase } = require('../config/supabase');
 const { realtimeHandler } = require('../utils/realtimeHandler');
 
 class WalletService {
+    // Check if a transaction reference has already been processed (idempotency)
+    async isTransactionProcessed(transactionRef) {
+        try {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('id')
+                .eq('payment_reference', transactionRef)
+                .single();
+            if (error && error.code !== 'PGRST116') { // PGRST116: No rows found
+                throw error;
+            }
+            return !!data;
+        } catch (error) {
+            console.error('isTransactionProcessed error:', error);
+            return false;
+        }
+    }
     // Create wallet for new user
     async createWallet(userId) {
         try {

@@ -3,7 +3,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+
+// Load configuration service
+const config = require('./config/environment');
 
 // Import middlewares
 const errorHandler = require('./middlewares/errorHandler');
@@ -13,6 +15,8 @@ const { validateEnvVars } = require('./utils/helpers');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user'); // ✅ NEW
 const walletRoutes = require('./routes/wallet');
+const paymentRoutes = require('./routes/payment'); // ✅ NEW
+const webhookRoutes = require('./routes/webhook'); // ✅ NEW
 const vtuRoutes = require('./routes/vtu');
 const transactionRoutes = require('./routes/transactions');
 const resellerRoutes = require('./routes/reseller');
@@ -21,28 +25,18 @@ const supportRoutes = require('./routes/support');
 const settingsRoutes = require('./routes/settings');
 const subdomainRoutes = require('./routes/subdomain');
 const statusRoutes = require('./routes/status');
+const statsRoutes = require('./routes/stats'); // ✅ NEW
 
 // Import real-time handler
 const { realtimeHandler } = require('./utils/realtimeHandler');
 
-// Validate environment variables
-const requiredEnvVars = [
-    'SUPABASE_URL',
-    'SUPABASE_ANON_KEY',
-    'SUPABASE_SERVICE_ROLE_KEY'
-];
-
-try {
-    validateEnvVars(requiredEnvVars);
-    console.log('✅ Environment variables validated successfully');
-} catch (error) {
-    console.error('❌ Environment validation failed:', error.message);
-    process.exit(1);
-}
+// Configuration is already validated and loaded
+console.log('✅ Configuration loaded and validated successfully');
+config.logConfigSummary();
 
 const app = express();
-const PORT = process.env.PORT || 8000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const { PORT } = config.server;
+const NODE_ENV = config.env;
 
 // Trust proxy (Render/reverse proxy support)
 app.set('trust proxy', 1);
@@ -64,9 +58,7 @@ app.use(helmet({
 // CORS
 const corsOptions = {
     origin: function (origin, callback) {
-        const allowedOrigins = process.env.CORS_ORIGIN ?
-            process.env.CORS_ORIGIN.split(',') :
-            ['http://localhost:3000', 'http://localhost:5000'];
+        const allowedOrigins = config.server.corsOrigin;
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -80,8 +72,8 @@ app.use(cors(corsOptions));
 
 // Rate Limiting
 const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+    windowMs: config.security.rateLimiting.windowMs,
+    max: config.security.rateLimiting.maxRequests,
     message: {
         success: false,
         message: 'Too many requests from this IP, please try again later.'
@@ -113,7 +105,7 @@ app.get('/health', (req, res) => {
         message: 'StarkTol API is running',
         timestamp: new Date().toISOString(),
         environment: NODE_ENV,
-        version: process.env.API_VERSION || 'v1'
+        version: config.server.apiVersion
     });
 });
 
@@ -132,12 +124,14 @@ app.get('/api/status', (req, res) => {
 });
 
 // API Prefix
-const apiPrefix = process.env.API_PREFIX || '/api/v1';
+const apiPrefix = config.server.apiPrefix;
 
 // Register Routes
 app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/user`, userRoutes); // ✅ NEW
 app.use(`${apiPrefix}/wallet`, walletRoutes);
+app.use(`${apiPrefix}/payment`, paymentRoutes); // ✅ NEW - Payment initiation
+app.use(webhookRoutes); // ✅ NEW - Webhooks (no prefix for webhooks)
 app.use(`${apiPrefix}/vtu`, vtuRoutes);
 app.use(`${apiPrefix}/transactions`, transactionRoutes);
 app.use(`${apiPrefix}/reseller`, resellerRoutes);
@@ -146,24 +140,27 @@ app.use(`${apiPrefix}/support`, supportRoutes);
 app.use(`${apiPrefix}/settings`, settingsRoutes);
 app.use(`${apiPrefix}/subdomain`, subdomainRoutes);
 app.use(`${apiPrefix}/status`, statusRoutes);
+app.use(`${apiPrefix}/stats`, statsRoutes); // ✅ NEW - Statistics
 
 // API Docs
 app.get(`${apiPrefix}/docs`, (req, res) => {
     res.json({
         success: true,
         message: 'StarkTol API Documentation',
-        version: process.env.API_VERSION || 'v1',
+        version: config.server.apiVersion,
         endpoints: {
             auth: `${apiPrefix}/auth`,
             user: `${apiPrefix}/user`, // ✅ NEW
             wallet: `${apiPrefix}/wallet`,
+            payment: `${apiPrefix}/payment`, // ✅ NEW
             vtu: `${apiPrefix}/vtu`,
             transactions: `${apiPrefix}/transactions`,
             reseller: `${apiPrefix}/reseller`,
             referrals: `${apiPrefix}/referrals`,
             support: `${apiPrefix}/support`,
             settings: `${apiPrefix}/settings`,
-            subdomain: `${apiPrefix}/subdomain`
+            subdomain: `${apiPrefix}/subdomain`,
+            stats: `${apiPrefix}/stats` // ✅ NEW
         },
         documentation_url: 'https://docs.mystarktol.com'
     });
