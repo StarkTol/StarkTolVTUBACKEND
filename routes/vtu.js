@@ -4,6 +4,9 @@ const vtuController = require('../controllers/vtuController');
 const authMiddleware = require('../middlewares/authMiddleware');
 const { validateRequest } = require('../middlewares/validateRequest');
 
+// Callback route (no auth required) for Clubkonnect transaction updates
+router.post('/callback', vtuController.handleCallback);
+
 // VTU routes - all require authentication
 router.use(authMiddleware);
 

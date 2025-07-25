@@ -17,7 +17,7 @@ class Config {
         // Load and validate all configurations
         this._loadServerConfig();
         this._loadDatabaseConfig();
-        this._loadNellobytesConfig();
+        this._loadClubkonnectConfig();
         this._loadSecurityConfig();
         this._validateRequiredConfig();
     }
@@ -51,47 +51,33 @@ class Config {
     }
 
     /**
-     * Load Nellobytesystems configuration with validation and defaults
+     * Load Clubkonnect configuration with validation and defaults
      */
-    _loadNellobytesConfig() {
-        this.nellobytes = {
+    _loadClubkonnectConfig() {
+        this.clubkonnect = {
             // Core API Configuration
-            baseUrl: process.env.NELLOBYTES_BASE_URL || 'https://api.nellobytesystems.com',
-            username: process.env.NELLOBYTES_USERNAME,
-            password: process.env.NELLOBYTES_PASSWORD,
-            apiKey: process.env.NELLOBYTES_API_KEY,
-            secretKey: process.env.NELLOBYTES_SECRET_KEY,
+            baseUrl: process.env.CLUBKONNECT_BASE_URL || 'https://www.clubkonnect.com',
+            userId: process.env.CLUBKONNECT_USERID,
+            email: process.env.CLUBKONNECT_EMAIL,
+            apiKey: process.env.CLUBKONNECT_API_KEY,
             
-            // Authentication & API Settings
-            authType: process.env.NELLOBYTES_AUTH_TYPE || 'bearer',
-            apiVersion: process.env.NELLOBYTES_API_VERSION || 'v1',
-            timeout: this._getNumber('NELLOBYTES_TIMEOUT', 30000),
-            rateLimit: this._getNumber('NELLOBYTES_RATE_LIMIT', 60),
-            retryAttempts: this._getNumber('NELLOBYTES_RETRY_ATTEMPTS', 3),
-            retryDelay: this._getNumber('NELLOBYTES_RETRY_DELAY', 5000),
+            // API Settings
+            timeout: this._getNumber('CLUBKONNECT_TIMEOUT', 30000),
+            retryAttempts: this._getNumber('CLUBKONNECT_RETRY_ATTEMPTS', 3),
+            retryDelay: this._getNumber('CLUBKONNECT_RETRY_DELAY', 5000),
             
-            // Callback & Webhook Configuration
-            callbackUrl: process.env.NELLOBYTES_CALLBACK_URL || `${this._getBaseUrl()}/api/v1/callback/nellobytes`,
-            webhookUrl: process.env.NELLOBYTES_WEBHOOK_URL || `${this._getBaseUrl()}/api/v1/webhook/nellobytes`,
-            webhookSecret: process.env.NELLOBYTES_WEBHOOK_SECRET,
+            // Callback Configuration
+            callbackUrl: process.env.CLUBKONNECT_CALLBACK_URL || `${this._getBaseUrl()}/api/v1/vtu/callback`,
             
             // Service Endpoints
             endpoints: {
-                networks: process.env.NELLOBYTES_NETWORKS_ENDPOINT || '/networks',
-                dataPlans: process.env.NELLOBYTES_DATA_PLANS_ENDPOINT || '/data-plans',
-                airtime: process.env.NELLOBYTES_AIRTIME_ENDPOINT || '/APIAirtimeV1.asp',
-                data: process.env.NELLOBYTES_DATA_ENDPOINT || '/data',
-                cable: process.env.NELLOBYTES_CABLE_ENDPOINT || '/cable-tv',
-                electricity: process.env.NELLOBYTES_ELECTRICITY_ENDPOINT || '/electricity',
-                balance: process.env.NELLOBYTES_BALANCE_ENDPOINT || '/balance',
-                status: process.env.NELLOBYTES_STATUS_ENDPOINT || '/transaction-status',
-                // Additional endpoints for the 7 transaction methods
-                buyData: process.env.NELLOBYTES_BUY_DATA_ENDPOINT || '/APIDataV1.asp',
-                payCableTV: process.env.NELLOBYTES_PAY_CABLE_TV_ENDPOINT || '/APICableTVV1.asp',
-                payElectricity: process.env.NELLOBYTES_PAY_ELECTRICITY_ENDPOINT || '/APIElectricityV1.asp',
-                printRechargePIN: process.env.NELLOBYTES_PRINT_RECHARGE_PIN_ENDPOINT || '/APIPrintRechargePINV1.asp',
-                buyWaecPIN: process.env.NELLOBYTES_BUY_WAEC_PIN_ENDPOINT || '/APIWaecPINV1.asp',
-                buyJambPIN: process.env.NELLOBYTES_BUY_JAMB_PIN_ENDPOINT || '/APIJambPINV1.asp'
+                airtime: '/api/topup/',
+                data: '/api/data/',
+                cable: '/api/cablesub/',
+                electricity: '/api/billpayment/',
+                balance: '/api/balance/',
+                verify: '/api/verify/',
+                transaction: '/api/requery/'
             }
         };
     }
@@ -113,15 +99,10 @@ class Config {
      */
     _validateRequiredConfig() {
         const requiredFields = [
-            // Database
+            // Database - Required for core functionality
             'database.supabase.url',
             'database.supabase.anonKey',
             'database.supabase.serviceRoleKey',
-            
-            // Nellobytes critical fields
-            'nellobytes.baseUrl',
-            'nellobytes.username',
-            'nellobytes.password',
         ];
 
         const missingFields = [];
@@ -136,52 +117,41 @@ class Config {
             throw new Error(`Missing required configuration: ${missingFields.join(', ')}`);
         }
 
-        // Validate Nellobytes configuration
-        this._validateNellobytesConfig();
+        // Only validate Clubkonnect if credentials are provided
+        if (this.clubkonnect.userId && this.clubkonnect.apiKey) {
+            this._validateClubkonnectConfig();
+        } else {
+            console.log('ℹ️ Clubkonnect credentials not provided - VTU services will be disabled');
+        }
     }
 
     /**
-     * Validate Nellobytes specific configuration
+     * Validate Clubkonnect specific configuration
      */
-    _validateNellobytesConfig() {
-        const { nellobytes } = this;
+    _validateClubkonnectConfig() {
+        const { clubkonnect } = this;
         
-        // Validate auth type
-        const validAuthTypes = ['bearer', 'basic', 'apikey'];
-        if (!validAuthTypes.includes(nellobytes.authType)) {
-            throw new Error(`Invalid NELLOBYTES_AUTH_TYPE: ${nellobytes.authType}. Must be one of: ${validAuthTypes.join(', ')}`);
-        }
-
         // Validate timeout
-        if (nellobytes.timeout < 1000 || nellobytes.timeout > 60000) {
-            throw new Error('NELLOBYTES_TIMEOUT must be between 1000 and 60000 milliseconds');
-        }
-
-        // Validate rate limit
-        if (nellobytes.rateLimit < 1 || nellobytes.rateLimit > 1000) {
-            throw new Error('NELLOBYTES_RATE_LIMIT must be between 1 and 1000 requests per minute');
+        if (clubkonnect.timeout < 1000 || clubkonnect.timeout > 60000) {
+            throw new Error('CLUBKONNECT_TIMEOUT must be between 1000 and 60000 milliseconds');
         }
 
         // Validate retry configuration
-        if (nellobytes.retryAttempts < 1 || nellobytes.retryAttempts > 10) {
-            throw new Error('NELLOBYTES_RETRY_ATTEMPTS must be between 1 and 10');
+        if (clubkonnect.retryAttempts < 1 || clubkonnect.retryAttempts > 10) {
+            throw new Error('CLUBKONNECT_RETRY_ATTEMPTS must be between 1 and 10');
         }
 
-        if (nellobytes.retryDelay < 1000 || nellobytes.retryDelay > 30000) {
-            throw new Error('NELLOBYTES_RETRY_DELAY must be between 1000 and 30000 milliseconds');
+        if (clubkonnect.retryDelay < 1000 || clubkonnect.retryDelay > 30000) {
+            throw new Error('CLUBKONNECT_RETRY_DELAY must be between 1000 and 30000 milliseconds');
         }
 
         // Validate URLs
-        if (!this._isValidUrl(nellobytes.baseUrl)) {
-            throw new Error('NELLOBYTES_BASE_URL must be a valid URL');
+        if (!this._isValidUrl(clubkonnect.baseUrl)) {
+            throw new Error('CLUBKONNECT_BASE_URL must be a valid URL');
         }
 
-        if (nellobytes.callbackUrl && !this._isValidUrl(nellobytes.callbackUrl)) {
-            throw new Error('NELLOBYTES_CALLBACK_URL must be a valid URL');
-        }
-
-        if (nellobytes.webhookUrl && !this._isValidUrl(nellobytes.webhookUrl)) {
-            throw new Error('NELLOBYTES_WEBHOOK_URL must be a valid URL');
+        if (clubkonnect.callbackUrl && !this._isValidUrl(clubkonnect.callbackUrl)) {
+            throw new Error('CLUBKONNECT_CALLBACK_URL must be a valid URL');
         }
     }
 
@@ -243,46 +213,25 @@ class Config {
     }
 
     /**
-     * Get Nellobytes full endpoint URL
+     * Get Clubkonnect full endpoint URL
      */
-    getNellobytesEndpoint(endpoint) {
-        const endpointPath = this.nellobytes.endpoints[endpoint];
+    getClubkonnectEndpoint(endpoint) {
+        const endpointPath = this.clubkonnect.endpoints[endpoint];
         if (!endpointPath) {
-            throw new Error(`Unknown Nellobytes endpoint: ${endpoint}`);
+            throw new Error(`Unknown Clubkonnect endpoint: ${endpoint}`);
         }
         
-        return `${this.nellobytes.baseUrl}${this.nellobytes.apiVersion ? `/${this.nellobytes.apiVersion}` : ''}${endpointPath}`;
+        return `${this.clubkonnect.baseUrl}${endpointPath}`;
     }
 
     /**
-     * Get Nellobytes authentication headers
+     * Get Clubkonnect authentication parameters
      */
-    getNellobytesAuthHeaders() {
-        const { nellobytes } = this;
-        
-        switch (nellobytes.authType) {
-            case 'bearer':
-                return {
-                    'Authorization': `Bearer ${nellobytes.apiKey || nellobytes.secretKey}`,
-                    'Content-Type': 'application/json'
-                };
-                
-            case 'basic':
-                const credentials = Buffer.from(`${nellobytes.username}:${nellobytes.password}`).toString('base64');
-                return {
-                    'Authorization': `Basic ${credentials}`,
-                    'Content-Type': 'application/json'
-                };
-                
-            case 'apikey':
-                return {
-                    'X-API-Key': nellobytes.apiKey,
-                    'Content-Type': 'application/json'
-                };
-                
-            default:
-                throw new Error(`Unsupported auth type: ${nellobytes.authType}`);
-        }
+    getClubkonnectAuthParams() {
+        return {
+            userid: this.clubkonnect.userId,
+            apikey: this.clubkonnect.apiKey
+        };
     }
 
     /**
@@ -293,9 +242,8 @@ class Config {
         console.log(`   Environment: ${this.env}`);
         console.log(`   Server Port: ${this.server.port}`);
         console.log(`   API Prefix: ${this.server.apiPrefix}`);
-        console.log(`   Nellobytes Base URL: ${this.nellobytes.baseUrl}`);
-        console.log(`   Nellobytes Auth Type: ${this.nellobytes.authType}`);
-        console.log(`   Nellobytes Rate Limit: ${this.nellobytes.rateLimit}/min`);
+        console.log(`   Clubkonnect Base URL: ${this.clubkonnect.baseUrl}`);
+        console.log(`   Clubkonnect User ID: ${this.clubkonnect.userId ? 'Configured' : 'Missing'}`);
         console.log(`   Database: Supabase (${this.database.supabase.url ? 'Configured' : 'Missing'})`);
     }
 }

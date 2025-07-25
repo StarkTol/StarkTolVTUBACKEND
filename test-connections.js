@@ -194,42 +194,22 @@ try {
     console.log('   ❌ Realtime Handler: Failed -', error.message);
 }
 
-// Test 11: Nellobytes HTTP Helper
-console.log('\n11. Testing Nellobytes HTTP Helper:');
+// Test 11: Clubkonnect Configuration
+console.log('\n11. Testing Clubkonnect Configuration:');
 try {
-    const nellobytesHttpHelper = require('./utils/nellobytesHttpHelper');
-    console.log('   ✅ HTTP Helper Module: OK');
-    
-    // Test configuration
-    const config = nellobytesHttpHelper.getConfigSummary();
-    console.log(`   ✅ Configuration: ${config.authType}, timeout: ${config.timeout}ms`);
-    
-    // Test query string builder
-    const testParams = { network: 'mtn', active: true };
-    const queryString = nellobytesHttpHelper.buildQueryString(testParams);
-    console.log(`   ✅ Query Builder: OK (${queryString})`);
-    
+    const { clubkonnectConfig } = require('./config/clubkonnect');
+    console.log('   ✅ Clubkonnect Config: OK');
+    console.log(`   ✅ Base URL: ${clubkonnectConfig.baseUrl}`);
+    console.log(`   ✅ User ID: ${clubkonnectConfig.userId ? 'Configured' : 'Missing'}`);
+    console.log(`   ✅ API Key: ${clubkonnectConfig.apiKey ? 'Configured' : 'Missing'}`);
 } catch (error) {
-    console.log('   ❌ Nellobytes HTTP Helper: Failed -', error.message);
-}
-
-// Test 12: Nellobytes Service (Legacy)
-console.log('\n12. Testing Nellobytes Service (Legacy):');
-try {
-    const nellobytesService = require('./services/nellobytesService');
-    console.log('   ✅ Legacy Service: OK');
-    
-    const configSummary = nellobytesService.getConfigSummary();
-    console.log(`   ✅ Legacy Config: ${configSummary.authType}, endpoints: ${configSummary.endpoints.length}`);
-    
-} catch (error) {
-    console.log('   ❌ Nellobytes Service: Failed -', error.message);
+    console.log('   ❌ Clubkonnect Configuration: Failed -', error.message);
 }
 
 console.log('\n🎉 Connection test completed!');
 console.log('If you see mostly green checkmarks, your backend is properly connected.');
 console.log('Any red X marks indicate issues that need to be resolved.');
-console.log('\n💡 Quick Tests Available:');
-console.log('   - Test HTTP helper: node test-nellobytes-http.js');
-console.log('   - View usage examples: node examples/nellobytesHttpHelperUsage.js');
-console.log('   - Read documentation: docs/nellobytesHttpHelper.md\n');
+console.log('\n💡 VTU Services now use Clubkonnect API integration.');
+console.log('   - All Nellobytes integration has been removed');
+console.log('   - Update your .env file with Clubkonnect credentials');
+console.log('   - Test VTU functionality through the API endpoints\n');

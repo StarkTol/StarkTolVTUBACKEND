@@ -11,8 +11,8 @@ class ClubKonnectConfig {
         this.apiKey = process.env.CLUBKONNECT_APIKEY;
         this.callbackUrl = process.env.CLUBKONNECT_CALLBACK_URL;
         
-        // API Configuration
-        this.baseUrl = process.env.CLUBKONNECT_BASE_URL || 'https://www.nellobytesystems.com';
+            // API Configuration
+            this.baseUrl = process.env.CLUBKONNECT_BASE_URL || 'https://www.clubkonnect.com';
         this.apiVersion = process.env.CLUBKONNECT_API_VERSION || 'v1';
         this.timeout = parseInt(process.env.CLUBKONNECT_TIMEOUT) || 30000; // 30 seconds
         this.retryAttempts = parseInt(process.env.CLUBKONNECT_RETRY_ATTEMPTS) || 3;

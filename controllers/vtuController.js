@@ -691,6 +691,112 @@ class VTUController {
             res.status(500).json(generateResponse(false, 'Internal server error'));
         }
     }
+
+    // Handle VTU callback from Clubkonnect
+    async handleCallback(req, res) {
+        try {
+            console.log('📥 VTU callback received:', {
+                body: req.body,
+                headers: req.headers,
+                timestamp: new Date().toISOString()
+            });
+
+            const { request_id, status, message } = req.body;
+
+            if (!request_id) {
+                return res.status(400).json(generateResponse(false, 'Missing request_id in callback'));
+            }
+
+            // Find the transaction by payment_reference (which should match request_id)
+            const { data: transactionData, error: findError } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('payment_reference', request_id)
+                .single();
+
+            if (findError || !transactionData) {
+                console.error('Transaction not found for callback:', { request_id, error: findError });
+                return res.status(404).json(generateResponse(false, 'Transaction not found'));
+            }
+
+            // Update transaction status based on callback
+            let newStatus = 'processing';
+            if (status === 'successful' || status === 'success' || status === 'completed') {
+                newStatus = 'completed';
+            } else if (status === 'failed' || status === 'error') {
+                newStatus = 'failed';
+            }
+
+            // Update transaction with callback information
+            const { error: updateError } = await supabase
+                .from('transactions')
+                .update({
+                    status: newStatus,
+                    error_message: newStatus === 'failed' ? message : null,
+                    metadata: {
+                        ...transactionData.metadata,
+                        callback_received_at: new Date().toISOString(),
+                        callback_status: status,
+                        callback_message: message,
+                        provider_response: req.body
+                    },
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', transactionData.id);
+
+            if (updateError) {
+                console.error('Failed to update transaction from callback:', updateError);
+                return res.status(500).json(generateResponse(false, 'Failed to update transaction'));
+            }
+
+            // If transaction failed, we might need to refund the user's wallet
+            if (newStatus === 'failed') {
+                console.log('Transaction failed, considering refund:', {
+                    transactionId: transactionData.id,
+                    userId: transactionData.user_id,
+                    amount: transactionData.amount
+                });
+
+                // Here you could implement automatic refund logic
+                // For now, we'll just log it for manual processing
+            }
+
+            // Send real-time notification to user if status changed
+            try {
+                if (typeof realtimeHandler !== 'undefined' && realtimeHandler.sendNotification) {
+                    const notificationTitle = newStatus === 'completed' ? 'Transaction Successful' : 'Transaction Failed';
+                    const notificationMessage = newStatus === 'completed' 
+                        ? `Your ${transactionData.type.replace('_', ' ')} was successful.`
+                        : `Your ${transactionData.type.replace('_', ' ')} failed. ${message || ''}`;
+
+                    await realtimeHandler.sendNotification(transactionData.user_id, {
+                        title: notificationTitle,
+                        message: notificationMessage,
+                        type: 'transaction_update',
+                        data: {
+                            transactionId: transactionData.id,
+                            status: newStatus,
+                            timestamp: new Date().toISOString()
+                        }
+                    });
+                }
+            } catch (notificationError) {
+                console.error('Failed to send notification for callback:', notificationError);
+            }
+
+            console.log('✅ VTU callback processed successfully:', {
+                transactionId: transactionData.id,
+                requestId: request_id,
+                status: newStatus
+            });
+
+            res.json(generateResponse(true, 'Callback processed successfully'));
+
+        } catch (error) {
+            console.error('VTU callback processing error:', error);
+            res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
 }
 
 module.exports = new VTUController();

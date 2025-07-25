@@ -74,8 +74,8 @@ A comprehensive VTU (Virtual Top-Up) platform backend built with Node.js, Expres
 
 3. **Set up environment variables**
    ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
+   # Create .env file with your configuration
+   touch .env
    ```
 
 4. **Test connections**
@@ -93,7 +93,7 @@ A comprehensive VTU (Virtual Top-Up) platform backend built with Node.js, Expres
 
 ### Environment Variables
 
-Create a `.env` file based on `.env.example`. Key variables include:
+Create a `.env` file with the following key variables:
 
 #### Core Configuration
 ```env
