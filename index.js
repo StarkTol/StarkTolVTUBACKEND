@@ -1,11 +1,29 @@
+// Load environment variables first (handle both local and production)
+try {
+    require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+} catch (error) {
+    console.log('ℹ️ No .env file found, using system environment variables');
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
-// Load configuration service
-const config = require('./config/environment');
+console.log('🚀 Starting StarkTol VTU Backend...');
+console.log(`📍 Node Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`🌐 Port: ${process.env.PORT || 8000}`);
+
+// Load configuration service with error handling
+let config;
+try {
+    config = require('./config/environment');
+    console.log('✅ Configuration loaded successfully');
+} catch (error) {
+    console.error('❌ Failed to load configuration:', error.message);
+    process.exit(1);
+}
 
 // Import middlewares
 const errorHandler = require('./middlewares/errorHandler');

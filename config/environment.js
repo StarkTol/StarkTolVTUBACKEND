@@ -1,7 +1,11 @@
 const path = require('path');
 
-// Load environment variables
-require('dotenv').config();
+// Load environment variables - only if .env file exists
+try {
+    require('dotenv').config();
+} catch (error) {
+    console.log('ℹ️ No .env file found, using environment variables from system');
+}
 
 /**
  * Configuration service for environment variables
@@ -26,8 +30,10 @@ class Config {
      * Load server configuration
      */
     _loadServerConfig() {
+        // Use Render's dynamic PORT or fallback to 8000 for local development
+        const port = process.env.PORT || 8000;
         this.server = {
-            port: this._getNumber('PORT', 8000),
+            port: parseInt(port, 10),
             apiPrefix: process.env.API_PREFIX || '/api/v1',
             apiVersion: process.env.API_VERSION || 'v1',
             corsOrigin: this._getArray('CORS_ORIGIN', [
