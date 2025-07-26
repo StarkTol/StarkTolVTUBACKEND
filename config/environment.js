@@ -30,14 +30,14 @@ class Config {
      * Load server configuration
      */
     _loadServerConfig() {
-        // Use Render's dynamic PORT or fallback to 3000 for local development
-        const port = process.env.PORT || 3000;
+        // Use Render's dynamic PORT or fallback to 8000 for local development
+        const port = process.env.PORT || 8000;
         this.server = {
             port: parseInt(port, 10),
             apiPrefix: process.env.API_PREFIX || '/api/v1',
             apiVersion: process.env.API_VERSION || 'v1',
             corsOrigin: this._getArray('CORS_ORIGIN', [
-                'http://localhost:3000', 
+                'http://localhost:8000', 
                 'http://localhost:5000'
             ]),
         };

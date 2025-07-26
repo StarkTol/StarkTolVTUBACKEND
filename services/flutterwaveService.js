@@ -178,7 +178,7 @@ class FlutterwaveService {
                 tx_ref: txRef,
                 amount: parseFloat(amount),
                 currency: 'NGN',
-                redirect_url: redirectUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/wallet/fund/success`,
+                redirect_url: redirectUrl || `${process.env.FRONTEND_URL || 'http://localhost:8000'}/dashboard/wallet/fund/success`,
                 payment_options: 'card,banktransfer,ussd,account,mobilemoney,barter,qr',
                 customer: {
                     email: userEmail,
@@ -188,7 +188,7 @@ class FlutterwaveService {
                 customizations: {
                     title: 'StarkTol VTU - Wallet Funding',
                     description: description,
-                    logo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/logo.png`
+                    logo: `${process.env.FRONTEND_URL || 'http://localhost:8000'}/logo.png`
                 },
                 meta: {
                     source: 'wallet_funding',

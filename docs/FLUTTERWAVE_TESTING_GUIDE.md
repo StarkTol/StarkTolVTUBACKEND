@@ -46,7 +46,7 @@ FLW_ENCRYPTION_KEY=FLWSECK_TEST-your_test_encryption_key
 FLW_WEBHOOK_HASH=your_test_webhook_hash
 
 # Test URLs
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:8000
 BASE_URL=http://localhost:8000
 
 # Database (Test instance recommended)
@@ -121,7 +121,7 @@ curl -X POST http://localhost:8000/api/v1/payment/initiate \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
     "amount": 1000,
-    "redirect_url": "http://localhost:3000/dashboard/wallet/fund/success"
+    "redirect_url": "http://localhost:8000/dashboard/wallet/fund/success"
   }'
 
 # Expected Response:
@@ -298,7 +298,7 @@ describe('PaymentController', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({
         amount: 1000,
-        redirect_url: 'http://localhost:3000/success'
+        redirect_url: 'http://localhost:8000/success'
       });
 
     expect(response.status).toBe(200);

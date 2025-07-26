@@ -21,7 +21,7 @@ NODE_ENV=development  # Use 'production' for deployment
 PORT=8000
 BASE_URL=https://your-backend-url.onrender.com
 FRONTEND_URL=https://your-frontend-url.onrender.com
-CORS_ORIGIN=https://your-frontend-url.onrender.com,http://localhost:3000
+CORS_ORIGIN=https://your-frontend-url.onrender.com,http://localhost:8000
 ```
 
 #### 🗄️ **Database (Supabase)**

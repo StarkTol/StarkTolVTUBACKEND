@@ -83,7 +83,7 @@ NODE_ENV=development
 API_PREFIX=/api/v1
 
 # CORS Configuration (Optional)
-CORS_ORIGIN=http://localhost:3000,http://localhost:5000
+CORS_ORIGIN=http://localhost:8000,http://localhost:5000
 
 # Rate Limiting (Optional)
 RATE_LIMIT_WINDOW_MS=900000

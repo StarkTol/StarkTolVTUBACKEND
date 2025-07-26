@@ -11,7 +11,7 @@ console.log('============================================');
 // Environment check
 console.log(`📍 Node.js Version: ${process.version}`);
 console.log(`📍 NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
-console.log(`📍 PORT: ${process.env.PORT || 'not set (will use 3000)'}`);
+console.log(`📍 PORT: ${process.env.PORT || 'not set (will use 8000)'}`);
 
 // Load dotenv if available
 try {
@@ -51,7 +51,7 @@ const express = require('express');
 console.log('✅ Express loaded');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 // Basic middleware
 app.use(express.json());

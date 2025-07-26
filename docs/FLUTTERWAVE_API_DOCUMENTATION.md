@@ -431,7 +431,7 @@ FLW_ENCRYPTION_KEY=FLWSECK_TEST-your_encryption_key
 FLW_WEBHOOK_HASH=your_webhook_hash
 
 # Application URLs
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:8000
 BASE_URL=http://localhost:8000
 
 # Database
