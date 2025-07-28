@@ -30,8 +30,14 @@ class ClubKonnectConfig {
         const missing = required.filter(field => !this[field]);
         
         if (missing.length > 0) {
-            throw new Error(`Missing ClubKonnect configuration: ${missing.join(', ')}`);
+            console.warn(`⚠️  Missing ClubKonnect configuration: ${missing.join(', ')}`);
+            console.warn('⚠️  VTU services will be disabled. Set CLUBKONNECT_USER_ID and CLUBKONNECT_API_KEY to enable VTU services.');
+            this.isConfigured = false;
+            return;
         }
+        
+        this.isConfigured = true;
+        console.log('✅ ClubKonnect configuration loaded successfully');
     }
 
     /**
@@ -211,6 +217,22 @@ class ClubKonnectConfig {
                response?.error || 
                response?.description || 
                'Unknown error from ClubKonnect API';
+    }
+
+    /**
+     * Check if ClubKonnect is properly configured
+     */
+    isReady() {
+        return this.isConfigured === true;
+    }
+
+    /**
+     * Throw error if not configured (for methods that require configuration)
+     */
+    requireConfiguration() {
+        if (!this.isReady()) {
+            throw new Error('ClubKonnect is not configured. VTU services are unavailable.');
+        }
     }
 }
 
