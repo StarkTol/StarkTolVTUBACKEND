@@ -235,24 +235,44 @@ class FlutterwaveService {
     }
 
     /**
-     * Verify webhook signature
-     * @param {string} signature - Webhook signature from headers
+     * Verify webhook signature and hash
+     * @param {string} signature - Webhook signature from headers (verif-hash)
      * @param {Object} payload - Webhook payload
      * @returns {boolean} Whether signature is valid
      */
     verifyWebhookSignature(signature, payload) {
         try {
+            // Check for webhook secret configuration
             if (!this.webhookSecret) {
                 console.warn('⚠️ Webhook secret not configured, skipping signature verification');
                 return true; // Allow webhook if secret not configured (for development)
             }
 
-            const hash = crypto
+            // If no signature provided, reject
+            if (!signature) {
+                console.error('❌ No webhook signature provided');
+                return false;
+            }
+
+            // Create hash using the webhook secret
+            const computedHash = crypto
                 .createHmac('sha256', this.webhookSecret)
                 .update(JSON.stringify(payload))
                 .digest('hex');
 
-            return signature === hash;
+            // Compare signatures
+            const isValid = signature === computedHash;
+            
+            if (!isValid) {
+                console.error('❌ Webhook signature mismatch:', {
+                    provided: signature?.substring(0, 10) + '...',
+                    computed: computedHash?.substring(0, 10) + '...'
+                });
+            } else {
+                console.log('✅ Webhook signature verified successfully');
+            }
+
+            return isValid;
         } catch (error) {
             console.error('❌ Webhook signature verification error:', error);
             return false;

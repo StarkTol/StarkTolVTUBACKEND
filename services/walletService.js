@@ -1,5 +1,30 @@
-const { supabase } = require('../config/supabase');
+const { supabase, supabaseAdmin } = require('../config/supabaseClient');
 const { realtimeHandler } = require('../utils/realtimeHandler');
+
+// Custom error classes
+class InsufficientFundsError extends Error {
+    constructor(message = 'Insufficient wallet balance') {
+        super(message);
+        this.name = 'InsufficientFundsError';
+        this.code = 'INSUFFICIENT_FUNDS';
+    }
+}
+
+class WalletFrozenError extends Error {
+    constructor(message = 'Wallet is frozen') {
+        super(message);
+        this.name = 'WalletFrozenError';
+        this.code = 'WALLET_FROZEN';
+    }
+}
+
+class TransactionError extends Error {
+    constructor(message = 'Transaction failed') {
+        super(message);
+        this.name = 'TransactionError';
+        this.code = 'TRANSACTION_ERROR';
+    }
+}
 
 class WalletService {
     // Check if a transaction reference has already been processed (idempotency)
@@ -65,231 +90,210 @@ class WalletService {
         }
     }
 
-    // Credit wallet (add funds)
-    async creditWallet(userId, amount, description = 'Wallet credit', transactionRef = null) {
+    // Get wallet balance
+    async getBalance(userId) {
         try {
-            // Get current wallet balance
             const wallet = await this.getWallet(userId);
-            const newBalance = parseFloat(wallet.balance) + parseFloat(amount);
-            const newTotalDeposits = parseFloat(wallet.total_deposits) + parseFloat(amount);
+            return wallet.balance;
+        } catch (error) {
+            console.error('Get balance error:', error);
+            throw new Error('Failed to retrieve balance');
+        }
+    }
 
-            // Update wallet balance
-            const { error: updateError } = await supabase
-                .from('wallets')
-                .update({
-                    balance: newBalance,
-                    total_deposits: newTotalDeposits,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', userId);
-
-            if (updateError) {
-                throw updateError;
+    // Credit wallet (add funds) with atomicity
+    async credit(userId, amount, description = 'Wallet credit', transactionRef = null) {
+        // Begin database transaction for atomicity
+        const client = supabaseAdmin;
+        
+        try {
+            const creditAmount = parseFloat(amount);
+            if (creditAmount <= 0) {
+                throw new TransactionError('Credit amount must be greater than zero');
             }
 
-            // Create transaction record
-            const { data: transaction, error: transactionError } = await supabase
-                .from('transactions')
-                .insert({
-                    user_id: userId,
-                    type: 'credit',
-                    amount: parseFloat(amount),
-                    description,
-                    status: 'completed',
-                    payment_reference: transactionRef || `CREDIT_${Date.now()}`,
-                    balance_before: parseFloat(wallet.balance),
-                    balance_after: newBalance,
-                    created_at: new Date().toISOString()
-                })
-                .select()
-                .single();
-
-            if (transactionError) {
-                console.error('Transaction record error:', transactionError);
+            // Check if wallet is frozen
+            const frozenStatus = await this.isWalletFrozen(userId);
+            if (frozenStatus.is_frozen) {
+                throw new WalletFrozenError(`Wallet is frozen: ${frozenStatus.reason}`);
             }
 
-            // Send real-time update
-            realtimeHandler.sendBalanceUpdate(userId, newBalance);
+            // Start RPC transaction for atomicity
+            const { data: result, error } = await client.rpc('credit_wallet_atomic', {
+                p_user_id: userId,
+                p_amount: creditAmount,
+                p_description: description,
+                p_transaction_ref: transactionRef || `CREDIT_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+            });
+
+            if (error) {
+                throw new TransactionError(`Credit operation failed: ${error.message}`);
+            }
+
+            // Emit Supabase channel events after successful commit
+            await this.emitWalletUpdated(userId, result.new_balance);
+            await this.emitTransactionCreated(userId, result.transaction);
+
+            // Send real-time updates
+            realtimeHandler.sendBalanceUpdate(userId, result.new_balance);
+            realtimeHandler.sendTransactionUpdate(userId, result.transaction, 'Wallet credited successfully');
 
             return {
                 success: true,
-                new_balance: newBalance,
-                transaction
+                new_balance: result.new_balance,
+                transaction: result.transaction
             };
 
         } catch (error) {
             console.error('Credit wallet error:', error);
-            throw new Error('Failed to credit wallet');
+            if (error instanceof WalletFrozenError || error instanceof TransactionError) {
+                throw error;
+            }
+            throw new TransactionError('Failed to credit wallet');
         }
     }
 
-    // Debit wallet (subtract funds)
-    async debitWallet(userId, amount, description = 'Wallet debit', transactionRef = null) {
+    // Legacy method for backward compatibility
+    async creditWallet(userId, amount, description = 'Wallet credit', transactionRef = null) {
+        return this.credit(userId, amount, description, transactionRef);
+    }
+
+    // Debit wallet (subtract funds) with atomicity
+    async debit(userId, amount, description = 'Wallet debit', transactionRef = null) {
+        const client = supabaseAdmin;
+        
         try {
-            // Get current wallet balance
-            const wallet = await this.getWallet(userId);
-            const currentBalance = parseFloat(wallet.balance);
             const debitAmount = parseFloat(amount);
-
-            // Check sufficient balance
-            if (currentBalance < debitAmount) {
-                throw new Error('Insufficient wallet balance');
+            if (debitAmount <= 0) {
+                throw new TransactionError('Debit amount must be greater than zero');
             }
 
-            const newBalance = currentBalance - debitAmount;
-            const newTotalWithdrawals = parseFloat(wallet.total_withdrawals) + debitAmount;
-
-            // Update wallet balance
-            const { error: updateError } = await supabase
-                .from('wallets')
-                .update({
-                    balance: newBalance,
-                    total_withdrawals: newTotalWithdrawals,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', userId);
-
-            if (updateError) {
-                throw updateError;
+            // Check if wallet is frozen
+            const frozenStatus = await this.isWalletFrozen(userId);
+            if (frozenStatus.is_frozen) {
+                throw new WalletFrozenError(`Wallet is frozen: ${frozenStatus.reason}`);
             }
 
-            // Create transaction record
-            const { data: transaction, error: transactionError } = await supabase
-                .from('transactions')
-                .insert({
-                    user_id: userId,
-                    type: 'debit',
-                    amount: debitAmount,
-                    description,
-                    status: 'completed',
-                    payment_reference: transactionRef || `DEBIT_${Date.now()}`,
-                    balance_before: currentBalance,
-                    balance_after: newBalance,
-                    created_at: new Date().toISOString()
-                })
-                .select()
-                .single();
-
-            if (transactionError) {
-                console.error('Transaction record error:', transactionError);
+            // Check spending limits
+            const limitCheck = await this.checkSpendingLimit(userId, debitAmount);
+            if (!limitCheck.allowed) {
+                throw new TransactionError(limitCheck.reason);
             }
 
-            // Send real-time update
-            realtimeHandler.sendBalanceUpdate(userId, newBalance);
+            // Start RPC transaction for atomicity with balance check
+            const { data: result, error } = await client.rpc('debit_wallet_atomic', {
+                p_user_id: userId,
+                p_amount: debitAmount,
+                p_description: description,
+                p_transaction_ref: transactionRef || `DEBIT_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+            });
+
+            if (error) {
+                if (error.message.includes('insufficient')) {
+                    throw new InsufficientFundsError('Insufficient wallet balance');
+                }
+                throw new TransactionError(`Debit operation failed: ${error.message}`);
+            }
+
+            // Emit Supabase channel events after successful commit
+            await this.emitWalletUpdated(userId, result.new_balance);
+            await this.emitTransactionCreated(userId, result.transaction);
+
+            // Send real-time updates
+            realtimeHandler.sendBalanceUpdate(userId, result.new_balance);
+            realtimeHandler.sendTransactionUpdate(userId, result.transaction, 'Wallet debited successfully');
 
             return {
                 success: true,
-                new_balance: newBalance,
-                transaction
+                new_balance: result.new_balance,
+                transaction: result.transaction
             };
 
         } catch (error) {
             console.error('Debit wallet error:', error);
-            throw error;
+            if (error instanceof InsufficientFundsError || error instanceof WalletFrozenError || error instanceof TransactionError) {
+                throw error;
+            }
+            throw new TransactionError('Failed to debit wallet');
         }
     }
 
-    // Transfer funds between wallets
-    async transferFunds(fromUserId, toUserId, amount, description = 'Wallet transfer') {
+    // Legacy method for backward compatibility
+    async debitWallet(userId, amount, description = 'Wallet debit', transactionRef = null) {
+        return this.debit(userId, amount, description, transactionRef);
+    }
+
+    // Transfer funds between wallets with atomicity
+    async transfer(fromUserId, toUserId, amount, description = 'Wallet transfer') {
+        const client = supabaseAdmin;
+
         try {
             const transferAmount = parseFloat(amount);
-            const transferRef = `TFR_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-
-            // Get both wallets
-            const [fromWallet, toWallet] = await Promise.all([
-                this.getWallet(fromUserId),
-                this.getWallet(toUserId)
-            ]);
-
-            const fromCurrentBalance = parseFloat(fromWallet.balance);
-
-            // Check sufficient balance
-            if (fromCurrentBalance < transferAmount) {
-                throw new Error('Insufficient wallet balance');
+            if (transferAmount <= 0) {
+                throw new TransactionError('Transfer amount must be greater than zero');
             }
 
-            const fromNewBalance = fromCurrentBalance - transferAmount;
-            const toNewBalance = parseFloat(toWallet.balance) + transferAmount;
-
-            // Update both wallets
-            const [fromUpdate, toUpdate] = await Promise.all([
-                supabase
-                    .from('wallets')
-                    .update({
-                        balance: fromNewBalance,
-                        total_withdrawals: parseFloat(fromWallet.total_withdrawals) + transferAmount,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('user_id', fromUserId),
-                
-                supabase
-                    .from('wallets')
-                    .update({
-                        balance: toNewBalance,
-                        total_deposits: parseFloat(toWallet.total_deposits) + transferAmount,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('user_id', toUserId)
+            // Check if wallets are frozen
+            const [fromFrozenStatus, toFrozenStatus] = await Promise.all([
+                this.isWalletFrozen(fromUserId),
+                this.isWalletFrozen(toUserId)
             ]);
-
-            if (fromUpdate.error || toUpdate.error) {
-                throw new Error('Failed to update wallets');
+            if (fromFrozenStatus.is_frozen) {
+                throw new WalletFrozenError(`Sender's wallet is frozen: ${fromFrozenStatus.reason}`);
+            }
+            if (toFrozenStatus.is_frozen) {
+                throw new WalletFrozenError(`Recipient's wallet is frozen: ${toFrozenStatus.reason}`);
             }
 
-            // Create transaction records for both users
-            const [fromTransaction, toTransaction] = await Promise.all([
-                supabase
-                    .from('transactions')
-                    .insert({
-                        user_id: fromUserId,
-                        type: 'transfer_out',
-                        amount: transferAmount,
-                        description: `${description} (to user ${toUserId})`,
-                        status: 'completed',
-                        payment_reference: transferRef,
-                        balance_before: fromCurrentBalance,
-                        balance_after: fromNewBalance,
-                        metadata: { recipient_id: toUserId },
-                        created_at: new Date().toISOString()
-                    })
-                    .select()
-                    .single(),
-                
-                supabase
-                    .from('transactions')
-                    .insert({
-                        user_id: toUserId,
-                        type: 'transfer_in',
-                        amount: transferAmount,
-                        description: `${description} (from user ${fromUserId})`,
-                        status: 'completed',
-                        payment_reference: transferRef,
-                        balance_before: parseFloat(toWallet.balance),
-                        balance_after: toNewBalance,
-                        metadata: { sender_id: fromUserId },
-                        created_at: new Date().toISOString()
-                    })
-                    .select()
-                    .single()
-            ]);
+            // Start RPC transaction for atomicity
+            const { data: result, error } = await client.rpc('transfer_wallet_atomic', {
+                p_from_user_id: fromUserId,
+                p_to_user_id: toUserId,
+                p_amount: transferAmount,
+                p_description: description,
+                p_transaction_ref: `TRANSFER_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+            });
+
+            if (error) {
+                if (error.message.includes('insufficient')) {
+                    throw new InsufficientFundsError('Insufficient wallet balance');
+                }
+                throw new TransactionError(`Transfer operation failed: ${error.message}`);
+            }
+
+            // Emit Supabase channel events after successful commit
+            await this.emitWalletUpdated(fromUserId, result.from_new_balance);
+            await this.emitWalletUpdated(toUserId, result.to_new_balance);
+            await this.emitTransactionCreated(fromUserId, result.from_transaction);
+            await this.emitTransactionCreated(toUserId, result.to_transaction);
 
             // Send real-time updates
-            realtimeHandler.sendBalanceUpdate(fromUserId, fromNewBalance);
-            realtimeHandler.sendBalanceUpdate(toUserId, toNewBalance);
+            realtimeHandler.sendBalanceUpdate(fromUserId, result.from_new_balance);
+            realtimeHandler.sendBalanceUpdate(toUserId, result.to_new_balance);
+            realtimeHandler.sendTransactionUpdate(fromUserId, result.from_transaction, 'Funds transferred successfully');
+            realtimeHandler.sendTransactionUpdate(toUserId, result.to_transaction, 'Funds received successfully');
 
             return {
                 success: true,
-                from_new_balance: fromNewBalance,
-                to_new_balance: toNewBalance,
-                transfer_reference: transferRef,
-                from_transaction: fromTransaction.data,
-                to_transaction: toTransaction.data
+                from_new_balance: result.from_new_balance,
+                to_new_balance: result.to_new_balance,
+                transfer_reference: result.transfer_reference,
+                from_transaction: result.from_transaction,
+                to_transaction: result.to_transaction
             };
 
         } catch (error) {
             console.error('Transfer funds error:', error);
-            throw error;
+            if (error instanceof InsufficientFundsError || error instanceof WalletFrozenError || error instanceof TransactionError) {
+                throw error;
+            }
+            throw new TransactionError('Failed to transfer funds');
         }
+    }
+
+    // Legacy method for backward compatibility
+    async transferFunds(fromUserId, toUserId, amount, description = 'Wallet transfer') {
+        return this.transfer(fromUserId, toUserId, amount, description);
     }
 
     // Get wallet transaction history
@@ -345,6 +349,11 @@ class WalletService {
             console.error('Get transaction history error:', error);
             throw new Error('Failed to retrieve transaction history');
         }
+    }
+
+    // List transactions (alias for getTransactionHistory)
+    async listTransactions(userId, options = {}) {
+        return this.getTransactionHistory(userId, options);
     }
 
     // Get wallet statistics
@@ -579,7 +588,50 @@ class WalletService {
             return { allowed: true }; // Allow transaction if check fails
         }
     }
+
+    // Emit wallet.updated event to Supabase channel
+    async emitWalletUpdated(userId, newBalance) {
+        try {
+            await supabaseAdmin
+                .channel(`wallet_${userId}`)
+                .send({
+                    type: 'broadcast',
+                    event: 'wallet.updated', 
+                    payload: {
+                        user_id: userId,
+                        new_balance: newBalance,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+        } catch (error) {
+            console.error('Failed to emit wallet.updated event:', error);
+        }
+    }
+
+    // Emit transaction.created event to Supabase channel
+    async emitTransactionCreated(userId, transaction) {
+        try {
+            await supabaseAdmin
+                .channel(`transaction_${userId}`)
+                .send({
+                    type: 'broadcast',
+                    event: 'transaction.created',
+                    payload: {
+                        user_id: userId,
+                        transaction: transaction,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+        } catch (error) {
+            console.error('Failed to emit transaction.created event:', error);
+        }
+    }
 }
 
 const walletService = new WalletService();
-module.exports = { walletService };
+module.exports = { 
+    walletService, 
+    InsufficientFundsError,
+    WalletFrozenError,
+    TransactionError
+};

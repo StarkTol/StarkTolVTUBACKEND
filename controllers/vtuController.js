@@ -2,6 +2,7 @@ const { supabase } = require('../config/supabase');
 const { generateResponse } = require('../utils/helpers');
 const { vtuService } = require('../services/vtuService');
 const { realtimeHandler } = require('../utils/realtimeHandler');
+const { notificationService } = require('../services/notificationService');
 
 class VTUController {
     // Get available networks for airtime
@@ -689,6 +690,88 @@ class VTUController {
         } catch (error) {
             console.error('Purchase electricity error:', error);
             res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
+
+    // Validate smartcard number
+    async validateSmartcard(req, res) {
+        try {
+            const { provider, smartcard_number } = req.body;
+            
+            if (!provider || !smartcard_number) {
+                return res.status(400).json(generateResponse(false, 'Provider and smartcard number are required'));
+            }
+
+            const validation = await vtuService.validateSmartcard({ provider, smartcard_number });
+            
+            if (validation.valid) {
+                res.json(generateResponse(true, 'Smartcard validation successful', validation));
+            } else {
+                res.status(400).json(generateResponse(false, validation.message));
+            }
+        } catch (error) {
+            console.error('Smartcard validation error:', error);
+            res.status(500).json(generateResponse(false, 'Failed to validate smartcard'));
+        }
+    }
+
+    // Validate meter number
+    async validateMeter(req, res) {
+        try {
+            const { provider, meter_number, meter_type } = req.body;
+            
+            if (!provider || !meter_number || !meter_type) {
+                return res.status(400).json(generateResponse(false, 'Provider, meter number, and meter type are required'));
+            }
+
+            const validation = await vtuService.validateMeterNumber({ provider, meter_number, meter_type });
+            
+            if (validation.valid) {
+                res.json(generateResponse(true, 'Meter validation successful', validation));
+            } else {
+                res.status(400).json(generateResponse(false, validation.message));
+            }
+        } catch (error) {
+            console.error('Meter validation error:', error);
+            res.status(500).json(generateResponse(false, 'Failed to validate meter'));
+        }
+    }
+
+    // Get VTU account balance
+    async getVTUBalance(req, res) {
+        try {
+            const balance = await vtuService.getBalance();
+            
+            if (balance.success) {
+                res.json(generateResponse(true, 'Balance retrieved successfully', balance));
+            } else {
+                res.status(400).json(generateResponse(false, balance.message));
+            }
+        } catch (error) {
+            console.error('VTU balance check error:', error);
+            res.status(500).json(generateResponse(false, 'Failed to check VTU balance'));
+        }
+    }
+
+    // Get transaction status
+    async getTransactionStatus(req, res) {
+        try {
+            const { request_id } = req.params;
+            
+            if (!request_id) {
+                return res.status(400).json(generateResponse(false, 'Request ID is required'));
+            }
+
+            const status = await vtuService.getTransactionStatus(request_id);
+            
+            if (status.success) {
+                res.json(generateResponse(true, 'Transaction status retrieved successfully', status));
+            } else {
+                res.status(400).json(generateResponse(false, status.message));
+            }
+        } catch (error) {
+            console.error('Transaction status check error:', error);
+            res.status(500).json(generateResponse(false, 'Failed to check transaction status'));
         }
     }
 

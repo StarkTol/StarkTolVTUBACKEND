@@ -3,6 +3,8 @@
  * Provides encryption, hashing, signature verification, and security helpers
  */
 const crypto = require('crypto');
+const validator = require('validator');
+const xss = require('xss');
 
 // Configuration
 const ALGORITHM = 'aes-256-gcm';
@@ -314,6 +316,173 @@ const sanitizeInput = (input) => {
         .replace(/[<>"'&]/g, '') // Remove potential XSS characters
         .replace(/[\x00-\x1f\x7f-\x9f]/g, '') // Remove control characters
         .trim();
+};
+
+/**
+ * Advanced XSS sanitization using xss library
+ * @param {string} input - Input to sanitize
+ * @param {object} options - XSS options
+ * @returns {string} Sanitized input
+ */
+const sanitizeXSS = (input, options = {}) => {
+    if (typeof input !== 'string') return input;
+    
+    const defaultOptions = {
+        whiteList: {}, // No HTML tags allowed by default
+        stripIgnoreTag: true,
+        stripIgnoreTagBody: ['script'],
+        ...options
+    };
+    
+    return xss(input, defaultOptions);
+};
+
+/**
+ * Sanitize object recursively
+ * @param {object} obj - Object to sanitize
+ * @param {function} sanitizer - Sanitization function
+ * @returns {object} Sanitized object
+ */
+const sanitizeObject = (obj, sanitizer = sanitizeInput) => {
+    if (typeof obj !== 'object' || obj === null) {
+        return typeof obj === 'string' ? sanitizer(obj) : obj;
+    }
+    
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeObject(item, sanitizer));
+    }
+    
+    const sanitized = {};
+    for (const [key, value] of Object.entries(obj)) {
+        sanitized[key] = sanitizeObject(value, sanitizer);
+    }
+    
+    return sanitized;
+};
+
+/**
+ * Validate and sanitize email
+ * @param {string} email - Email to validate
+ * @returns {string|null} Sanitized email or null if invalid
+ */
+const validateEmail = (email) => {
+    if (!email || typeof email !== 'string') return null;
+    
+    const sanitized = sanitizeInput(email.toLowerCase());
+    return validator.isEmail(sanitized) ? sanitized : null;
+};
+
+/**
+ * Validate and sanitize phone number
+ * @param {string} phone - Phone number to validate
+ * @param {string} locale - Locale for validation (default: 'NG')
+ * @returns {string|null} Sanitized phone or null if invalid
+ */
+const validatePhone = (phone, locale = 'NG') => {
+    if (!phone || typeof phone !== 'string') return null;
+    
+    const sanitized = sanitizeInput(phone.replace(/[^\d+]/g, ''));
+    return validator.isMobilePhone(sanitized, locale) ? sanitized : null;
+};
+
+/**
+ * Validate money amount
+ * @param {string|number} amount - Amount to validate
+ * @param {number} min - Minimum amount (default: 0)
+ * @param {number} max - Maximum amount (default: 10000000)
+ * @returns {number|null} Valid amount or null if invalid
+ */
+const validateAmount = (amount, min = 0, max = 10000000) => {
+    const numAmount = parseFloat(amount);
+    
+    if (isNaN(numAmount) || numAmount < min || numAmount > max) {
+        return null;
+    }
+    
+    // Round to 2 decimal places for currency
+    return Math.round(numAmount * 100) / 100;
+};
+
+/**
+ * Validate alphanumeric string
+ * @param {string} input - Input to validate
+ * @param {number} minLength - Minimum length
+ * @param {number} maxLength - Maximum length
+ * @returns {string|null} Valid string or null if invalid
+ */
+const validateAlphanumeric = (input, minLength = 1, maxLength = 50) => {
+    if (!input || typeof input !== 'string') return null;
+    
+    const sanitized = sanitizeInput(input);
+    if (validator.isAlphanumeric(sanitized) && 
+        validator.isLength(sanitized, { min: minLength, max: maxLength })) {
+        return sanitized;
+    }
+    
+    return null;
+};
+
+/**
+ * Validate and sanitize username
+ * @param {string} username - Username to validate
+ * @returns {string|null} Valid username or null if invalid
+ */
+const validateUsername = (username) => {
+    if (!username || typeof username !== 'string') return null;
+    
+    const sanitized = sanitizeInput(username.toLowerCase());
+    
+    // Username rules: 3-30 chars, alphanumeric + underscore, no spaces
+    const usernameRegex = /^[a-z0-9_]{3,30}$/;
+    return usernameRegex.test(sanitized) ? sanitized : null;
+};
+
+/**
+ * Validate password strength
+ * @param {string} password - Password to validate
+ * @param {object} options - Validation options
+ * @returns {object} Validation result with isValid and errors
+ */
+const validatePassword = (password, options = {}) => {
+    const defaultOptions = {
+        minLength: 8,
+        requireUppercase: true,
+        requireLowercase: true,
+        requireNumbers: true,
+        requireSpecialChars: true,
+        ...options
+    };
+    
+    const errors = [];
+    
+    if (!password || typeof password !== 'string') {
+        return { isValid: false, errors: ['Password is required'] };
+    }
+    
+    if (password.length < defaultOptions.minLength) {
+        errors.push(`Password must be at least ${defaultOptions.minLength} characters`);
+    }
+    
+    if (defaultOptions.requireUppercase && !/[A-Z]/.test(password)) {
+        errors.push('Password must contain at least one uppercase letter');
+    }
+    
+    if (defaultOptions.requireLowercase && !/[a-z]/.test(password)) {
+        errors.push('Password must contain at least one lowercase letter');
+    }
+    
+    if (defaultOptions.requireNumbers && !/\d/.test(password)) {
+        errors.push('Password must contain at least one number');
+    }
+    
+    if (defaultOptions.requireSpecialChars && !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        errors.push('Password must contain at least one special character');
+    }
+    
+    return {
+        isValid: errors.length === 0,
+        errors: errors
+    };
 };
 
 /**

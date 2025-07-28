@@ -1,6 +1,7 @@
 const { supabase } = require('../config/supabase');
 const { generateResponse } = require('../utils/helpers');
 const { supportService } = require('../services/supportService');
+const { notificationService } = require('../services/notificationService');
 
 class SupportController {
     // Create a new support ticket
@@ -71,6 +72,14 @@ class SupportController {
                 ticket: ticketData,
                 message: messageData
             }));
+
+            // Send notification to user
+            await notificationService.sendSupportReplyNotification(userId, {
+                ticket_id: ticketData.id,
+                subject,
+                reply_message: message,
+                admin_name: 'Support Team'
+            });
 
         } catch (error) {
             console.error('Create ticket error:', error);

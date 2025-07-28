@@ -32,8 +32,9 @@ const { validateEnvVars } = require('./utils/helpers');
 // Import routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user'); // ✅ NEW
-const walletRoutes = require('./routes/wallet');
 const paymentRoutes = require('./routes/payment'); // ✅ NEW
+const notificationRoutes = require('./routes/notifications'); // ✅ NEW
+const walletRoutes = require('./routes/wallet');
 const webhookRoutes = require('./routes/webhook'); // ✅ NEW
 const vtuRoutes = require('./routes/vtu');
 const transactionRoutes = require('./routes/transactions');
@@ -152,9 +153,10 @@ const apiPrefix = config.server.apiPrefix;
 // Register Routes
 app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/user`, userRoutes); // ✅ NEW
+app.use(`${apiPrefix}/payment`, paymentRoutes); // ✅ NEW
+app.use(`${apiPrefix}/notifications`, notificationRoutes); // ✅ NEW
 app.use(`${apiPrefix}/wallet`, walletRoutes);
-app.use(`${apiPrefix}/payment`, paymentRoutes); // ✅ NEW - Payment initiation
-app.use(webhookRoutes); // ✅ NEW - Webhooks (no prefix for webhooks)
+app.use(webhookRoutes); // ✅ NEW - Webhooks (includes API prefix in route definition)
 app.use(`${apiPrefix}/vtu`, vtuRoutes);
 app.use(`${apiPrefix}/transactions`, transactionRoutes);
 app.use(`${apiPrefix}/reseller`, resellerRoutes);
@@ -174,8 +176,8 @@ app.get(`${apiPrefix}/docs`, (req, res) => {
         endpoints: {
             auth: `${apiPrefix}/auth`,
             user: `${apiPrefix}/user`, // ✅ NEW
-            wallet: `${apiPrefix}/wallet`,
             payment: `${apiPrefix}/payment`, // ✅ NEW
+            wallet: `${apiPrefix}/wallet`,
             vtu: `${apiPrefix}/vtu`,
             transactions: `${apiPrefix}/transactions`,
             reseller: `${apiPrefix}/reseller`,

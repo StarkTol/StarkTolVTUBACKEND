@@ -19,17 +19,27 @@ async function testConnections() {
         console.log('✅ Configuration validated successfully!');
         config.logConfigSummary();
 
-        // Test Supabase connection
+        // Test Supabase connection with safe error handling
         const { supabase } = require('./config/supabase');
-        const { data, error } = await supabase.from('users').select('count').limit(1);
-        
-        if (error) {
-            console.error('❌ Database connection failed:', error.message);
-            console.log('   Please check your Supabase credentials and database setup.');
-            process.exit(1);
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('*', { count: 'exact' })
+                .limit(1)
+                .maybeSingle();
+
+            if (error) {
+                console.warn('⚠️ Warning: Database connection issue:', error.message);
+                console.warn('   Supabase may be temporarily unreachable. Continuing startup.');
+            } else {
+                console.log('✅ Database connection verified successfully.');
+            }
+        } catch (err) {
+            console.warn('⚠️ Warning: Exception during database connection:', err.message);
+            console.warn('   Supabase may be temporarily unreachable. Continuing startup.');
         }
 
-        console.log('\n✅ All connections verified successfully!\n');
+        console.log('\n✅ All connections verified (or warnings issued). Proceeding...\n');
 
     } catch (error) {
         console.error('❌ Connection test failed:', error.message);

@@ -12,7 +12,9 @@
     "check": "node test-connections.js && echo 'All systems ready!'",
     "health-check": "node scripts/health-check.js",
     "validate-deployment": "node scripts/validate-deployment.js",
-    "pre-deploy": "npm run validate-deployment && npm run health-check"
+    "pre-deploy": "npm run validate-deployment && npm run health-check",
+    "migrate": "node scripts/run-migration.js",
+    "migrate:payment": "node scripts/run-migration.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.5",
@@ -23,13 +25,18 @@
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
+    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.5.1",
     "flutterwave-node-v3": "^1.1.1",
     "helmet": "^8.1.0",
+    "hpp": "^0.2.3",
+    "isomorphic-dompurify": "^2.26.0",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "winston": "^3.17.0"
+    "validator": "^13.15.15",
+    "winston": "^3.17.0",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

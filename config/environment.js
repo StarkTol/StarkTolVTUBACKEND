@@ -30,16 +30,21 @@ class Config {
      * Load server configuration
      */
     _loadServerConfig() {
-        // Use Render's dynamic PORT or fallback to 8000 for local development
-        const port = process.env.PORT || 8000;
+        // Use Render's dynamic PORT or fallback from environment
+        const port = process.env.PORT || process.env.SERVER_PORT || 8000;
+        
+        // Get CORS origins from environment or use secure defaults
+        const defaultCorsOrigins = this.isDevelopment ? 
+            ['http://localhost:3000', 'http://localhost:8000', 'http://localhost:5000'] : 
+            [];
+            
         this.server = {
             port: parseInt(port, 10),
             apiPrefix: process.env.API_PREFIX || '/api/v1',
             apiVersion: process.env.API_VERSION || 'v1',
-            corsOrigin: this._getArray('CORS_ORIGIN', [
-                'http://localhost:8000', 
-                'http://localhost:5000'
-            ]),
+            corsOrigin: this._getArray('CORS_ORIGIN') || this._getArray('FRONTEND_ORIGINS') || defaultCorsOrigins,
+            baseUrl: process.env.BASE_URL || (this.isDevelopment ? `http://localhost:${port}` : 'https://your-app.onrender.com'),
+            frontendUrl: process.env.FRONTEND_URL || (this.isDevelopment ? 'http://localhost:3000' : 'https://your-frontend.onrender.com')
         };
     }
 
@@ -63,7 +68,7 @@ class Config {
         this.clubkonnect = {
             // Core API Configuration
             baseUrl: process.env.CLUBKONNECT_BASE_URL || 'https://www.clubkonnect.com',
-            userId: process.env.CLUBKONNECT_USERID,
+            userId: process.env.CLUBKONNECT_USER_ID,
             email: process.env.CLUBKONNECT_EMAIL,
             apiKey: process.env.CLUBKONNECT_API_KEY,
             

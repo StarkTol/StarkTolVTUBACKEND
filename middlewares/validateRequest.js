@@ -57,6 +57,11 @@ const validationRules = {
             errors.push('Full name must be at least 2 characters long');
         }
 
+        // Email is optional in profile updates
+        if (data.email && !validateEmail(data.email)) {
+            errors.push('Invalid email format');
+        }
+
         if (!data.phone) {
             errors.push('Phone number is required');
         } else if (!validatePhoneNumber(data.phone)) {

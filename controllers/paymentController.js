@@ -1,6 +1,6 @@
 const { flutterwaveService } = require('../services/flutterwaveService');
 const { walletService } = require('../services/walletService');
-const { supabase } = require('../config/supabase');
+const { supabase, supabaseAdmin } = require('../config/supabaseClient');
 const { generateResponse } = require('../utils/helpers');
 const { realtimeHandler } = require('../utils/realtimeHandler');
 
@@ -10,14 +10,20 @@ class PaymentController {
     async initiatePayment(req, res) {
         try {
             const userId = req.user.id;
-            const { amount, redirect_url } = req.body;
+            const { amount, meta = {}, redirect_url } = req.body;
 
+            // Validate amount (min/max validation already handled by Joi middleware)
             if (!amount || amount <= 0) {
                 return res.status(400).json(generateResponse(false, 'Invalid payment amount'));
             }
 
+            // Additional validation for min/max as per task requirements
             if (amount < 100) {
                 return res.status(400).json(generateResponse(false, 'Minimum payment amount is ₦100'));
+            }
+
+            if (amount > 1000000) {
+                return res.status(400).json(generateResponse(false, 'Maximum payment amount is ₦1,000,000'));
             }
 
             // Get user details
@@ -40,7 +46,10 @@ class PaymentController {
                 wallet = await walletService.createWallet(userId);
             }
 
-            // Create payment link with Flutterwave
+            // Generate unique reference for payment
+            const uniqueReference = flutterwaveService.generateTxRef(userId);
+
+            // Create payment link with Flutterwave with supported payment options
             const paymentResult = await flutterwaveService.createPaymentLink({
                 amount: amount,
                 userId: userId,
@@ -48,7 +57,13 @@ class PaymentController {
                 userName: user.full_name || 'Customer',
                 userPhone: user.phone,
                 description: `Wallet funding - ₦${amount}`,
-                redirectUrl: redirect_url
+                redirectUrl: redirect_url,
+                meta: {
+                    ...meta,
+                    user_id: userId,
+                    platform: 'web',
+                    source: 'wallet_funding'
+                }
             });
 
             if (!paymentResult.success) {

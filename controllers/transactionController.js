@@ -1,5 +1,6 @@
 const { supabase } = require('../config/supabase');
 const { generateResponse } = require('../utils/helpers');
+const { notificationService } = require('../services/notificationService');
 
 class TransactionController {
     // Get user transactions with pagination
@@ -49,6 +50,14 @@ class TransactionController {
                 return res.status(500).json(generateResponse(false, 'Failed to retrieve transactions'));
             }
 
+// Check for successful transactions and send notifications
+if (transactions && transactions.length > 0) {
+    transactions.forEach(async (txn) => {
+        if (txn.status === 'completed') {
+            await notificationService.sendSuccessfulTransactionNotification(userId, txn);
+        }
+    });
+}
             const totalPages = Math.ceil(count / parseInt(limit));
 
             res.json(generateResponse(true, 'Transactions retrieved successfully', {

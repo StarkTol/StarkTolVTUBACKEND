@@ -8,10 +8,13 @@ class RealtimeHandler {
 
     // Initialize real-time subscriptions
     init() {
-        console.log('Initializing real-time handler...');
+        console.log('🔄 Initializing real-time handler...');
         this.setupBalanceSubscription();
         this.setupTransactionSubscription();
         this.setupSupportSubscription();
+        this.setupSupportMessagesSubscription();
+        this.setupNotificationsSubscription();
+        console.log('✅ Real-time handler initialized successfully');
     }
 
     // Setup balance update subscriptions
@@ -69,6 +72,47 @@ class RealtimeHandler {
             .subscribe();
 
         this.channels.set('support_changes', supportChannel);
+        console.log('✅ Support tickets real-time subscription setup complete');
+    }
+
+    // Setup support messages subscriptions (for real-time chat)
+    setupSupportMessagesSubscription() {
+        const supportMessagesChannel = supabase
+            .channel('support_messages_changes')
+            .on('postgres_changes', 
+                { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'support_messages' 
+                }, 
+                (payload) => {
+                    this.handleSupportMessageUpdate(payload);
+                }
+            )
+            .subscribe();
+
+        this.channels.set('support_messages_changes', supportMessagesChannel);
+        console.log('✅ Support messages real-time subscription setup complete');
+    }
+
+    // Setup notifications subscriptions
+    setupNotificationsSubscription() {
+        const notificationsChannel = supabase
+            .channel('notifications_changes')
+            .on('postgres_changes', 
+                { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'notifications' 
+                }, 
+                (payload) => {
+                    this.handleNotificationUpdate(payload);
+                }
+            )
+            .subscribe();
+
+        this.channels.set('notifications_changes', notificationsChannel);
+        console.log('✅ Notifications real-time subscription setup complete');
     }
 
     // Handle balance updates
@@ -155,6 +199,61 @@ class RealtimeHandler {
         }
 
         console.log(`Support ticket ${eventType} for user ${newRecord?.user_id || oldRecord?.user_id}`);
+    }
+
+    // Handle support message updates (real-time chat)
+    handleSupportMessageUpdate(payload) {
+        const { eventType, new: newRecord, old: oldRecord } = payload;
+        
+        let updateData = {
+            type: 'support_message_update',
+            event: eventType,
+            timestamp: new Date().toISOString()
+        };
+
+        switch (eventType) {
+            case 'INSERT':
+                updateData.message = newRecord;
+                updateData.notification_message = 'New support message received';
+                
+                // Broadcast to both user and admin (if applicable)
+                this.broadcastToUser(newRecord.user_id, updateData);
+                
+                // If it's a staff reply, also broadcast to the ticket owner
+                if (newRecord.is_staff_reply) {
+                    // Get ticket owner and broadcast
+                    this.broadcastSupportReply(newRecord.ticket_id, newRecord);
+                }
+                break;
+                
+            case 'UPDATE':
+                if (newRecord.is_read !== oldRecord.is_read) {
+                    updateData.message = newRecord;
+                    updateData.notification_message = 'Message read status updated';
+                    this.broadcastToUser(newRecord.user_id, updateData);
+                }
+                break;
+        }
+
+        console.log(`Support message ${eventType} for ticket ${newRecord?.ticket_id || oldRecord?.ticket_id}`);
+    }
+
+    // Handle notification updates
+    handleNotificationUpdate(payload) {
+        const { eventType, new: newRecord } = payload;
+        
+        if (eventType === 'INSERT') {
+            const updateData = {
+                type: 'new_notification',
+                event: eventType,
+                notification: newRecord,
+                timestamp: new Date().toISOString()
+            };
+
+            // Broadcast new notification to user
+            this.broadcastToUser(newRecord.user_id, updateData);
+            console.log(`🔔 New notification created for user ${newRecord.user_id}: ${newRecord.title}`);
+        }
     }
 
     // Send balance update to specific user

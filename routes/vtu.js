@@ -23,4 +23,12 @@ router.post('/data', validateRequest('purchaseData'), vtuController.purchaseData
 router.post('/cable', validateRequest('purchaseCable'), vtuController.purchaseCable);
 router.post('/electricity', validateRequest('purchaseElectricity'), vtuController.purchaseElectricity);
 
+// Validation routes
+router.post('/validate/smartcard', vtuController.validateSmartcard);
+router.post('/validate/meter', vtuController.validateMeter);
+
+// Utility routes
+router.get('/balance', vtuController.getVTUBalance);
+router.get('/transaction-status/:request_id', vtuController.getTransactionStatus);
+
 module.exports = router;

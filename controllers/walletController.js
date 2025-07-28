@@ -1,8 +1,9 @@
 const { flutterwaveService } = require('../services/flutterwaveService');
 const { walletService } = require('../services/walletService');
-const { supabase } = require('../config/supabase');
+const { supabase, supabaseAdmin } = require('../config/supabaseClient');
 const { generateResponse } = require('../utils/helpers');
 const { realtimeHandler } = require('../utils/realtimeHandler');
+const { notificationService } = require('../services/notificationService');
 
 class WalletController {
 
@@ -138,6 +139,14 @@ class WalletController {
                     status: 'success',
                     new_balance: creditResult.new_balance
                 }));
+
+                // Send wallet credit notification
+                await notificationService.sendWalletCreditNotification(userId, {
+                    amount: amount,
+                    reference: metadata.txRef,
+                    payment_method: method,
+                    new_balance: creditResult.new_balance
+                });
             }
 
             // Handle other payment methods (card, bank_transfer, etc.)
@@ -171,21 +180,35 @@ class WalletController {
         }
     }
 
-    // Deposit funds to wallet
-    async deposit(req, res) {
+    // Initialize payment for wallet deposit
+    async initiateDeposit(req, res) {
         try {
             const userId = req.user.id;
-            const { amount, payment_method, payment_reference } = req.body;
+            const { amount } = req.body;
 
             if (!amount || amount <= 0) {
                 return res.status(400).json(generateResponse(false, 'Invalid deposit amount'));
             }
 
-            if (!payment_method || !payment_reference) {
-                return res.status(400).json(generateResponse(false, 'Payment method and reference are required'));
+            const depositAmount = parseFloat(amount);
+            const minDeposit = parseFloat(process.env.MIN_DEPOSIT || '100');
+            
+            if (depositAmount < minDeposit) {
+                return res.status(400).json(generateResponse(false, `Minimum deposit amount is ₦${minDeposit}`));
             }
 
-            // Start transaction
+            // Get user details
+            const { data: userData, error: userError } = await supabase
+                .from('users')
+                .select('id, email, full_name, phone')
+                .eq('id', userId)
+                .single();
+
+            if (userError || !userData) {
+                return res.status(404).json(generateResponse(false, 'User not found'));
+            }
+
+            // Check if wallet exists
             const { data: walletData, error: walletError } = await supabase
                 .from('wallets')
                 .select('*')
@@ -196,11 +219,135 @@ class WalletController {
                 return res.status(404).json(generateResponse(false, 'Wallet not found'));
             }
 
-            // In a real implementation, you would verify the payment with the payment provider
-            // For now, we'll assume the payment is successful
+            // Initialize payment with Flutterwave
+            const paymentData = {
+                amount: depositAmount,
+                email: userData.email,
+                phone_number: userData.phone,
+                name: userData.full_name,
+                title: 'Wallet Deposit',
+                description: `Wallet deposit of ₦${depositAmount}`,
+                metadata: {
+                    user_id: userId,
+                    type: 'wallet_deposit',
+                    amount: depositAmount
+                }
+            };
 
-            const newBalance = parseFloat(walletData.balance) + parseFloat(amount);
-            const newTotalDeposits = parseFloat(walletData.total_deposits) + parseFloat(amount);
+            // Create payment link using Flutterwave service
+            const paymentResult = await flutterwaveService.createPaymentLink({
+                amount: depositAmount,
+                userId: userId,
+                userEmail: userData.email,
+                userName: userData.full_name || 'Customer',
+                userPhone: userData.phone,
+                description: `Wallet deposit of ₦${depositAmount}`,
+                redirectUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/wallet/deposit/success`
+            });
+
+            if (!paymentResult.success) {
+                return res.status(500).json(generateResponse(false, 'Failed to create payment link'));
+            }
+
+            // Create pending transaction record
+            const { data: transactionData, error: transactionError } = await supabase
+                .from('transactions')
+                .insert({
+                    user_id: userId,
+                    type: 'deposit',
+                    amount: depositAmount,
+                    description: `Wallet deposit via Flutterwave`,
+                    status: 'pending',
+                    payment_method: 'flutterwave',
+                    payment_reference: paymentResult.txRef,
+                    balance_before: parseFloat(walletData.balance),
+                    balance_after: parseFloat(walletData.balance), // Will be updated on success
+                    metadata: {
+                        flutterwave_reference: paymentResult.txRef,
+                        payment_link: paymentResult.paymentLink
+                    }
+                })
+                .select()
+                .single();
+
+            if (transactionError) {
+                console.error('Transaction record error:', transactionError);
+            }
+
+            res.json(generateResponse(true, 'Payment initialized successfully', {
+                payment_link: paymentResult.paymentLink,
+                tx_ref: paymentResult.txRef,
+                amount: depositAmount,
+                transaction: transactionData
+            }));
+
+        } catch (error) {
+            console.error('Initialize deposit error:', error);
+            res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
+
+    // Verify payment and credit wallet
+    async verifyPayment(req, res) {
+        try {
+            const { transaction_id, tx_ref } = req.body;
+
+            if (!transaction_id && !tx_ref) {
+                return res.status(400).json(generateResponse(false, 'Transaction ID or reference is required'));
+            }
+
+            // Verify payment with Flutterwave
+            let verificationResponse;
+            if (transaction_id) {
+                verificationResponse = await flutterwaveService.verifyTransactionById(transaction_id);
+            } else {
+                verificationResponse = await flutterwaveService.verifyTransactionByRef(tx_ref);
+            }
+
+            if (verificationResponse.status !== 'success') {
+                return res.status(400).json(generateResponse(false, verificationResponse.message || 'Payment verification failed'));
+            }
+
+            const paymentData = verificationResponse.data;
+            const userId = paymentData.meta?.user_id;
+            
+            if (!userId) {
+                return res.status(400).json(generateResponse(false, 'Invalid payment metadata'));
+            }
+
+            // Check if payment was successful
+            if (paymentData.status !== 'successful') {
+                return res.status(400).json(generateResponse(false, 'Payment was not successful'));
+            }
+
+            // Check if transaction already processed
+            const { data: existingTransaction, error: existingError } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('payment_reference', paymentData.tx_ref)
+                .eq('status', 'completed')
+                .single();
+
+            if (existingTransaction) {
+                return res.json(generateResponse(true, 'Payment already processed', {
+                    transaction: existingTransaction
+                }));
+            }
+
+            // Get wallet data
+            const { data: walletData, error: walletError } = await supabase
+                .from('wallets')
+                .select('*')
+                .eq('user_id', userId)
+                .single();
+
+            if (walletError || !walletData) {
+                return res.status(404).json(generateResponse(false, 'Wallet not found'));
+            }
+
+            const amount = parseFloat(paymentData.amount);
+            const newBalance = parseFloat(walletData.balance) + amount;
+            const newTotalDeposits = parseFloat(walletData.total_deposits) + amount;
 
             // Update wallet balance
             const { error: updateError } = await supabase
@@ -213,41 +360,138 @@ class WalletController {
                 .eq('user_id', userId);
 
             if (updateError) {
+                console.error('Wallet update error:', updateError);
                 return res.status(500).json(generateResponse(false, 'Failed to update wallet balance'));
             }
 
-            // Create transaction record
-            const { data: transactionData, error: transactionError } = await supabase
+            // Update transaction status
+            const { data: updatedTransaction, error: transactionUpdateError } = await supabase
                 .from('transactions')
-                .insert({
-                    user_id: userId,
-                    type: 'deposit',
-                    amount: parseFloat(amount),
-                    description: `Wallet deposit via ${payment_method}`,
+                .update({
                     status: 'completed',
-                    payment_method,
-                    payment_reference,
-                    balance_before: parseFloat(walletData.balance),
-                    balance_after: newBalance
+                    balance_after: newBalance,
+                    updated_at: new Date().toISOString(),
+                    metadata: {
+                        ...paymentData,
+                        verified_at: new Date().toISOString()
+                    }
                 })
+                .eq('payment_reference', paymentData.tx_ref)
+                .eq('user_id', userId)
                 .select()
                 .single();
 
-            if (transactionError) {
-                console.error('Transaction record error:', transactionError);
+            if (transactionUpdateError) {
+                console.error('Transaction update error:', transactionUpdateError);
             }
 
             // Send real-time update
             realtimeHandler.sendBalanceUpdate(userId, newBalance);
 
-            res.json(generateResponse(true, 'Deposit successful', {
+            res.json(generateResponse(true, 'Payment verified and wallet credited successfully', {
                 new_balance: newBalance,
-                transaction: transactionData
+                amount_credited: amount,
+                transaction: updatedTransaction
             }));
 
         } catch (error) {
-            console.error('Deposit error:', error);
+            console.error('Verify payment error:', error);
             res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
+
+    // Handle Flutterwave webhook
+    async handleWebhook(req, res) {
+        try {
+            const signature = req.headers['verif-hash'];
+            const webhookSecret = process.env.FLUTTERWAVE_WEBHOOK_SECRET;
+
+            // Verify webhook signature
+            if (!signature || signature !== webhookSecret) {
+                return res.status(401).json({ message: 'Unauthorized' });
+            }
+
+            const payload = req.body;
+            
+            // Handle successful payment
+            if (payload.event === 'charge.completed' && payload.data.status === 'successful') {
+                const paymentData = payload.data;
+                const userId = paymentData.meta?.user_id;
+                
+                if (!userId) {
+                    console.error('Webhook: Invalid payment metadata');
+                    return res.status(200).json({ message: 'Webhook received' });
+                }
+
+                // Check if already processed
+                const { data: existingTransaction } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('payment_reference', paymentData.tx_ref)
+                    .eq('status', 'completed')
+                    .single();
+
+                if (existingTransaction) {
+                    return res.status(200).json({ message: 'Transaction already processed' });
+                }
+
+                // Get wallet data
+                const { data: walletData, error: walletError } = await supabase
+                    .from('wallets')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .single();
+
+                if (walletError || !walletData) {
+                    console.error('Webhook: Wallet not found for user:', userId);
+                    return res.status(200).json({ message: 'Webhook received' });
+                }
+
+                const amount = parseFloat(paymentData.amount);
+                const newBalance = parseFloat(walletData.balance) + amount;
+                const newTotalDeposits = parseFloat(walletData.total_deposits) + amount;
+
+                // Update wallet balance
+                const { error: updateError } = await supabase
+                    .from('wallets')
+                    .update({
+                        balance: newBalance,
+                        total_deposits: newTotalDeposits,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('user_id', userId);
+
+                if (updateError) {
+                    console.error('Webhook: Wallet update error:', updateError);
+                    return res.status(200).json({ message: 'Webhook received' });
+                }
+
+                // Update transaction status
+                await supabase
+                    .from('transactions')
+                    .update({
+                        status: 'completed',
+                        balance_after: newBalance,
+                        updated_at: new Date().toISOString(),
+                        metadata: {
+                            ...paymentData,
+                            webhook_processed_at: new Date().toISOString()
+                        }
+                    })
+                    .eq('payment_reference', paymentData.tx_ref)
+                    .eq('user_id', userId);
+
+                // Send real-time update
+                realtimeHandler.sendBalanceUpdate(userId, newBalance);
+
+                console.log(`Webhook: Successfully processed payment for user ${userId}, amount: ${amount}`);
+            }
+
+            res.status(200).json({ message: 'Webhook received' });
+
+        } catch (error) {
+            console.error('Webhook error:', error);
+            res.status(500).json({ message: 'Webhook processing failed' });
         }
     }
 
@@ -495,6 +739,86 @@ class WalletController {
         } catch (error) {
             console.error('Transfer error:', error);
             res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
+
+    // Get wallet transaction history
+    async getTransactionHistory(req, res) {
+        try {
+            const userId = req.user.id;
+            const { page = 1, limit = 20, type, start_date, end_date } = req.query;
+
+            console.log('📋 Getting wallet transaction history:', userId);
+
+            const options = {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                type,
+                startDate: start_date,
+                endDate: end_date
+            };
+
+            const result = await walletService.getTransactionHistory(userId, options);
+
+            res.json(generateResponse(true, 'Transaction history retrieved successfully', result.transactions, {
+                pagination: result.pagination
+            }));
+
+        } catch (error) {
+            console.error('Get transaction history error:', error);
+            res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
+
+    // Get wallet statistics
+    async getWalletStats(req, res) {
+        try {
+            const userId = req.user.id;
+            const { period = 30 } = req.query;
+
+            console.log('📈 Getting wallet statistics:', userId);
+
+            const stats = await walletService.getWalletStats(userId, parseInt(period));
+
+            res.json(generateResponse(true, 'Wallet statistics retrieved successfully', stats));
+
+        } catch (error) {
+            console.error('Get wallet stats error:', error);
+            res.status(500).json(generateResponse(false, 'Internal server error'));
+        }
+    }
+
+    // Debit wallet for VTU purchases (called by VTU service)
+    async debitWalletForPurchase(userId, amount, description, reference) {
+        try {
+            console.log('💳 Debiting wallet for purchase:', { userId, amount, description, reference });
+
+            // Use wallet service to debit wallet
+            const result = await walletService.debitWallet(userId, amount, description, reference);
+
+            console.log('✅ Wallet debited successfully:', result.new_balance);
+            return result;
+
+        } catch (error) {
+            console.error('❌ Failed to debit wallet:', error);
+            throw error;
+        }
+    }
+
+    // Credit wallet for refunds (called by VTU service)
+    async creditWalletForRefund(userId, amount, description, reference) {
+        try {
+            console.log('💵 Crediting wallet for refund:', { userId, amount, description, reference });
+
+            // Use wallet service to credit wallet
+            const result = await walletService.creditWallet(userId, amount, description, reference);
+
+            console.log('✅ Wallet credited successfully:', result.new_balance);
+            return result;
+
+        } catch (error) {
+            console.error('❌ Failed to credit wallet:', error);
+            throw error;
         }
     }
 }

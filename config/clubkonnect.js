@@ -7,8 +7,8 @@ const config = require('./environment');
 class ClubKonnectConfig {
     constructor() {
         // Load environment variables
-        this.userId = process.env.CLUBKONNECT_USERID;
-        this.apiKey = process.env.CLUBKONNECT_APIKEY;
+        this.userId = process.env.CLUBKONNECT_USER_ID;
+        this.apiKey = process.env.CLUBKONNECT_API_KEY;
         this.callbackUrl = process.env.CLUBKONNECT_CALLBACK_URL;
         
             // API Configuration

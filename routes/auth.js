@@ -7,10 +7,12 @@ const { validateRequest } = require('../middlewares/validateRequest');
 // Authentication routes
 router.post('/register', validateRequest('register'), authController.register);
 router.post('/login', validateRequest('login'), authController.login);
-router.post('/logout', authController.logout);
+router.post('/logout', authMiddleware, authController.logout);
+router.post('/refresh-token', authMiddleware, authController.refreshToken);
 
 // Protected routes
 router.get('/profile', authMiddleware, authController.getProfile);
+router.get('/activities', authMiddleware, authController.getActivities);
 router.put('/profile', authMiddleware, validateRequest('updateProfile'), authController.updateProfile);
 router.put('/change-password', authMiddleware, validateRequest('changePassword'), authController.changePassword);
 

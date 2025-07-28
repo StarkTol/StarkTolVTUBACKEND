@@ -8,13 +8,41 @@ const { generateResponse } = require('../utils/helpers');
 
 // Raw body middleware for webhook signature verification
 const getRawBody = (req, res, next) => {
-  if (req.originalUrl.includes('/webhook/')) {
-    req.rawBody = '';
+  // Only process raw body for webhook endpoints that need signature verification
+  if (req.originalUrl.includes('/payment/webhook')) {
+    let rawBody = '';
+    req.setEncoding('utf8');
+    
     req.on('data', chunk => {
-      req.rawBody += chunk;
+      rawBody += chunk;
     });
+    
     req.on('end', () => {
-      next();
+      try {
+        // Store raw body for signature verification
+        req.rawBody = rawBody;
+        
+        // Parse JSON body
+        if (rawBody) {
+          req.body = JSON.parse(rawBody);
+        }
+        
+        next();
+      } catch (error) {
+        console.error('❌ Error parsing webhook payload:', error.message);
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid JSON payload' 
+        });
+      }
+    });
+    
+    req.on('error', (error) => {
+      console.error('❌ Error reading webhook body:', error);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Error reading request body' 
+      });
     });
   } else {
     next();
@@ -24,8 +52,8 @@ const getRawBody = (req, res, next) => {
 // Apply raw body middleware
 router.use(getRawBody);
 
-// Flutterwave Webhook endpoint
-router.post('/webhook/flutterwave', async (req, res) => {
+// Flutterwave Webhook endpoint - Secure with signature verification and idempotency
+router.post('/api/v1/payment/webhook', async (req, res) => {
   const webhookStartTime = Date.now();
   const eventId = req.body?.data?.id || `webhook_${Date.now()}`;
   

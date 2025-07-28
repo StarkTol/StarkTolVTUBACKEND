@@ -14,6 +14,10 @@ const initiatePaymentSchema = {
             'number.max': 'Maximum payment amount is ₦1,000,000',
             'any.required': 'Amount is required'
         }),
+    meta: Joi.object().optional()
+        .messages({
+            'object.base': 'Meta must be an object'
+        }),
     redirect_url: Joi.string().uri().optional()
         .messages({
             'string.uri': 'Redirect URL must be a valid URL'
