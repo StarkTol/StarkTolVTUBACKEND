@@ -4,12 +4,17 @@ const { supabaseAdmin } = require('../config/supabaseClient');
 
 class JWTService {
   constructor() {
-    this.jwtSecret = process.env.SUPABASE_JWT_SECRET;
+    // Try different JWT secret sources in order of preference
+    this.jwtSecret = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET;
     this.accessTokenExpiry = process.env.JWT_EXPIRES_IN || '1h';
     this.refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
     
+    // If no JWT secret is provided, generate a secure one for this session
+    // This is not ideal for production but prevents the app from crashing
     if (!this.jwtSecret) {
-      throw new Error('JWT_SECRET environment variable is required');
+      console.warn('⚠️  No JWT_SECRET or SUPABASE_JWT_SECRET environment variable found. Generating a session secret.');
+      console.warn('⚠️  This is not recommended for production. Please set JWT_SECRET or SUPABASE_JWT_SECRET in your environment.');
+      this.jwtSecret = require('crypto').randomBytes(64).toString('hex');
     }
   }
 
