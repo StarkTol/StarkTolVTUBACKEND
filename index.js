@@ -46,6 +46,8 @@ const subdomainRoutes = require('./routes/subdomain');
 const statusRoutes = require('./routes/status');
 const statsRoutes = require('./routes/stats'); // ✅ NEW
 
+// Initialize Express app before any app.use calls
+const app = express();
 // Log every request with method, path, and body
 app.use((req, res, next) => {
     console.log(`➡️  [Request] ${req.method} ${req.originalUrl}`);
@@ -61,7 +63,6 @@ const { realtimeHandler } = require('./utils/realtimeHandler');
 console.log('✅ Configuration loaded and validated successfully');
 config.logConfigSummary();
 
-const app = express();
 const { port } = config.server;
 const NODE_ENV = config.env;
 
