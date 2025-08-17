@@ -147,11 +147,12 @@ app.get('/api/status', (req, res) => {
     });
 });
 
+
 // API Prefix
 const apiPrefix = config.server.apiPrefix;
 
 // Register Routes
-app.use(`${apiPrefix}/auth`, authRoutes);
+app.use(`${apiPrefix}`, authRoutes);
 app.use(`${apiPrefix}/user`, userRoutes); // ✅ NEW
 app.use(`${apiPrefix}/payment`, paymentRoutes); // ✅ NEW
 app.use(`${apiPrefix}/notifications`, notificationRoutes); // ✅ NEW
