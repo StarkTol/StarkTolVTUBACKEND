@@ -190,12 +190,6 @@ class AuthController {
         });
       }
 
-      // Log registration activity
-      await this.logUserActivity(userData.id, 'registration', {
-        ip_address: clientIP,
-        user_agent: userAgent,
-        referral_used: !!referral_code
-      });
 
       const { password: _, ...userResponse } = userData;
       console.log("✅ Registration successful:", userResponse.email);
@@ -278,12 +272,8 @@ class AuthController {
         created_at: new Date().toISOString()
       });
 
-      // Log login activity
-      await this.logUserActivity(userData.id, 'login', {
-        ip_address: clientIP,
-        user_agent: userAgent,
-        remember_me
-      });
+  // Log login activity
+  // (removed logUserActivity call)
 
       const { password: _, ...userResponse } = userData;
 
@@ -344,10 +334,6 @@ class AuthController {
 
       // Log logout activity
       if (userId) {
-        await this.logUserActivity(userId, 'logout', {
-          ip_address: clientIP,
-          user_agent: userAgent
-        });
       }
 
       // Clear cookies
@@ -577,3 +563,4 @@ class AuthController {
 const controller = new AuthController();
 module.exports = controller;
 module.exports.checkEmail = controller.checkEmail.bind(controller);
+module.exports.register = controller.register.bind(controller);
