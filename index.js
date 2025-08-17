@@ -217,8 +217,15 @@ app.all('*', (req, res) => {
     });
 });
 
-// Global Error Handler
-app.use(errorHandler);
+// Global error handler: log errors to terminal and send response
+app.use((error, req, res, next) => {
+    console.error('❌ [Express Error]', error);
+    res.status(error.status || 500).json({
+        success: false,
+        message: error.message || 'Internal server error',
+        error: error.stack
+    });
+});
 
 // Init Realtime
 realtimeHandler.init();
