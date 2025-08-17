@@ -46,6 +46,14 @@ const subdomainRoutes = require('./routes/subdomain');
 const statusRoutes = require('./routes/status');
 const statsRoutes = require('./routes/stats'); // ✅ NEW
 
+// Log every request with method, path, and body
+app.use((req, res, next) => {
+    console.log(`➡️  [Request] ${req.method} ${req.originalUrl}`);
+    if (Object.keys(req.body).length) {
+        console.log('   [Body]', req.body);
+    }
+    next();
+});
 // Import real-time handler
 const { realtimeHandler } = require('./utils/realtimeHandler');
 
@@ -217,6 +225,15 @@ app.all('*', (req, res) => {
     });
 });
 
+// Catch 404 and log details
+app.use((req, res, next) => {
+    console.error(`🚫 [404] ${req.method} ${req.originalUrl} - Not Found`);
+    res.status(404).json({
+        success: false,
+        message: 'Endpoint not found',
+        endpoint: req.originalUrl
+    });
+});
 // Global error handler: log errors to terminal and send response
 app.use((error, req, res, next) => {
     console.error('❌ [Express Error]', error);
