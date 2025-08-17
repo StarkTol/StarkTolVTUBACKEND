@@ -67,6 +67,10 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Mount authentication routes
+const authRoutes = require('./routes/auth');
+app.use('/auth', authRoutes);
+
 // Render health check endpoint (fast response)
 app.get('/healthz', (req, res) => {
     res.status(200).json({ status: 'ok' });
