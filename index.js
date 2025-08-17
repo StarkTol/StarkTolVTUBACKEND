@@ -51,7 +51,7 @@ const app = express();
 // Log every request with method, path, and body
 app.use((req, res, next) => {
     console.log(`➡️  [Request] ${req.method} ${req.originalUrl}`);
-    if (Object.keys(req.body).length) {
+    if (req.body && typeof req.body === 'object' && req.body !== null && Object.keys(req.body).length) {
         console.log('   [Body]', req.body);
     }
     next();
