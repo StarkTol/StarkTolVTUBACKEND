@@ -4,6 +4,20 @@ const { generateResponse, generateReference, parsePhoneNumber } = require('../ut
 const jwtService = require('../services/jwtService');
 
 class AuthController {
+  // Check if email exists
+  async checkEmail(req, res) {
+    const email = req.query.email;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+    try {
+      const User = require('../models/User');
+      const user = await User.findByEmail(email);
+      res.json({ success: true, exists: !!user });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+  }
   // Generate JWT tokens
   generateTokens(userId, email) {
     const jwtSecret = process.env.SUPABASE_JWT_SECRET;
@@ -560,4 +574,6 @@ class AuthController {
   }
 }
 
-module.exports = new AuthController();
+const controller = new AuthController();
+module.exports = controller;
+module.exports.checkEmail = controller.checkEmail.bind(controller);
