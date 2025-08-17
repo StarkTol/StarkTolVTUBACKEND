@@ -65,7 +65,7 @@ class AuthController {
 
   async register(req, res) {
     try {
-      const { email, password, full_name, phone, referral_code } = req.body;
+  const { email, password, first_name, last_name, phone, referral_code } = req.body;
       const clientIP = req.ip || req.connection.remoteAddress;
       const userAgent = req.get('User-Agent');
 
@@ -73,7 +73,9 @@ class AuthController {
 
       // Sanitize inputs
       const sanitizedEmail = sanitizeEmail(email);
-      const sanitizedFullName = sanitizeInput(full_name);
+  const sanitizedFirstName = sanitizeInput(first_name);
+  const sanitizedLastName = sanitizeInput(last_name);
+  const sanitizedFullName = `${sanitizedFirstName} ${sanitizedLastName}`.trim();
       const sanitizedPhone = sanitizeInput(phone);
 
       // Validate inputs
@@ -85,8 +87,11 @@ class AuthController {
         return res.status(400).json(generateResponse(false, 'Password must be at least 8 characters long and contain letters and numbers'));
       }
 
-      if (!sanitizedFullName || sanitizedFullName.length < 2) {
-        return res.status(400).json(generateResponse(false, 'Full name must be at least 2 characters long'));
+      if (!sanitizedFirstName || sanitizedFirstName.length < 1) {
+        return res.status(400).json(generateResponse(false, 'First name is required'));
+      }
+      if (!sanitizedLastName || sanitizedLastName.length < 1) {
+        return res.status(400).json(generateResponse(false, 'Last name is required'));
       }
 
       if (!validatePhoneNumber(sanitizedPhone)) {
